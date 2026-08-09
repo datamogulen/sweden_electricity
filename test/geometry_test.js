@@ -11,7 +11,8 @@ const ROOT = path.join(__dirname, "..");
 const appSrc = fs.readFileSync(path.join(ROOT, "site", "app.js"), "utf8");
 const m = appSrc.match(/\/\*STL-CORE-BEGIN\*\/([\s\S]*?)\/\*STL-CORE-END\*\//);
 if (!m) { console.error("FAIL: STL-CORE-block saknas i app.js"); process.exit(1); }
-const ctx = { console, Math, Map, Set, Array, Infinity, NaN };
+const ctx = { console, Math, Map, Set, Array, Infinity, NaN,
+  TextEncoder, DataView, ArrayBuffer, Uint8Array, Uint32Array };
 vm.createContext(ctx);
 vm.runInContext(m[1], ctx, { filename: "STL-CORE" });
 const C = ctx; // buildPlate, buildTextSolid, checkSolid, m.m.
@@ -180,6 +181,34 @@ console.log("7. Glyfsanity: hål överlever hela vägen till mesh (analytisk vol
       `"${s}" volym = area × höjd`,
       `${r.volumeMM3.toFixed(2)} ≈ ${expected.toFixed(2)} mm³`);
   }
+}
+
+console.log("8. Zip-artefakt genom riktig unzip -t");
+{
+  const os = require("os");
+  const cp = require("child_process");
+  const { plate, text } = built["SPOTPRIS SE 2024 (negativa priser ger sockel)"];
+  const zip = C.makeZip([
+    { name: "price_SE_2024_modell.stl", data: C.trisToBinarySTL(plate.tris, "m") },
+    { name: "price_SE_2024_text.stl", data: C.trisToBinarySTL(text.tris, "t") },
+    { name: "FOLJESEDEL.txt", data: "testföljesedel — åäö ÅÄÖ" },
+  ]);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "elstl-"));
+  const zpath = path.join(tmp, "export.zip");
+  fs.writeFileSync(zpath, Buffer.from(zip));
+  let out = "", code = 0;
+  try { out = cp.execSync(`unzip -t ${JSON.stringify(zpath)}`, { encoding: "utf8" }); }
+  catch (e) { code = e.status; out = String(e.stdout || e); }
+  ok(code === 0 && /No errors detected/.test(out), "unzip -t utan fel",
+    out.trim().split("\n").pop());
+  // och en medvetet korrupt zip ska underkännas (spärren bevisas avfyra)
+  const bad = Buffer.from(zip); bad[40] ^= 0xff;
+  const bpath = path.join(tmp, "bad.zip");
+  fs.writeFileSync(bpath, bad);
+  let badFailed = false;
+  try { cp.execSync(`unzip -t ${JSON.stringify(bpath)}`, { stdio: "pipe" }); }
+  catch (e) { badFailed = true; }
+  ok(badFailed, "korrupt zip underkänns av unzip -t");
 }
 
 console.log(`\n${checks} kontroller, ${failures} fel`);
