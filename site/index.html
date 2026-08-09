@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El i Sverige över tid — kalenderrelief</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F7F2E6; --panel:#FDFAF2; --ink:#3A3226; --accent:#2F5A8F;
+  --terra:#C96F4A; --line:#E2D9C4; --dim:#8A7F6A;
+}
+body{background:var(--bg);color:var(--ink);height:100vh;display:flex;
+  flex-direction:column;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:baseline;gap:14px;padding:10px 18px;
+  border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+header h1{font-size:1.05rem;font-weight:600}
+header .sub{font-size:.7rem;color:var(--dim)}
+#main{flex:1;display:flex;min-height:0}
+#controls{width:270px;flex-shrink:0;overflow-y:auto;padding:14px;
+  border-right:1px solid var(--line);background:var(--panel);font-size:.8rem}
+#controls .grp{margin-bottom:14px}
+#controls label{display:block;font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);margin-bottom:3px}
+#controls select,#controls input[type=text]{width:100%;padding:5px 6px;
+  border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--ink);
+  font-size:.8rem;font-family:inherit}
+#controls .row2{display:flex;gap:8px}
+#controls .row2>div{flex:1}
+.hint{font-size:.68rem;color:var(--dim);margin-top:3px;line-height:1.5}
+.chk{display:flex;align-items:center;gap:6px;font-size:.8rem}
+.chk input{width:auto}
+button{padding:8px 12px;border:1px solid var(--accent);border-radius:5px;
+  background:var(--accent);color:#fff;font-size:.8rem;cursor:pointer;
+  font-family:inherit;width:100%}
+button:hover{filter:brightness(1.12)}
+button:disabled{opacity:.5;cursor:default}
+button.ghost{background:transparent;color:var(--accent)}
+#error{color:#A33B22;font-size:.75rem;white-space:pre-wrap;margin-top:8px;line-height:1.5}
+#stage{flex:1;position:relative;min-width:0}
+#view{width:100%;height:100%;display:block;touch-action:none}
+#tooltip{position:absolute;display:none;background:rgba(253,250,242,.96);
+  border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:.74rem;
+  pointer-events:none;line-height:1.6;box-shadow:0 2px 8px rgba(58,50,38,.12);z-index:5}
+#readout{position:absolute;left:12px;bottom:12px;max-width:60%;
+  background:rgba(253,250,242,.92);border:1px solid var(--line);border-radius:5px;
+  padding:8px 12px;font-size:.7rem;line-height:1.7;pointer-events:none}
+#hud{position:absolute;right:12px;top:12px;background:rgba(253,250,242,.92);
+  border:1px solid var(--line);border-radius:5px;padding:6px 10px;font-size:.66rem;
+  color:var(--dim);pointer-events:none;line-height:1.7}
+#about{display:none;position:absolute;inset:24px;overflow-y:auto;z-index:10;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:22px 28px;font-size:.82rem;line-height:1.7;box-shadow:0 8px 30px rgba(58,50,38,.18)}
+#about h2{margin:14px 0 6px;font-size:.95rem}
+#about h2:first-child{margin-top:0}
+#about ul{margin-left:18px}
+#about code{background:var(--bg);padding:1px 4px;border-radius:3px;font-size:.76rem}
+#about-close{width:auto;float:right}
+#buildreport{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;
+  font-size:.68rem;background:var(--bg);border-radius:4px;padding:8px;margin-top:6px}
+details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <h1>El i Sverige över tid</h1>
+  <span class="sub">kalenderrelief · vecka × timme · webbtvilling med STL-export (WYSIWYG)</span>
+</header>
+<div id="main">
+  <div id="controls">
+    <div class="grp">
+      <label for="measure">Mått</label>
+      <select id="measure"></select>
+    </div>
+    <div class="grp">
+      <label for="zone">Område</label>
+      <select id="zone"></select>
+      <div class="hint">Hela Sverige är huvudvyn; SE1–SE4 använder samma skala
+        (områdena summerar till Sverigemodellen).</div>
+    </div>
+    <div class="grp">
+      <label>År (ISO-år)</label>
+      <div class="row2">
+        <div><select id="year-from"></select></div>
+        <div><select id="year-to"></select></div>
+      </div>
+      <div class="hint" id="year-hint"></div>
+    </div>
+    <div class="grp" id="cap-row">
+      <label for="cap">Pristak (D3 — kapning är ett synligt val)</label>
+      <select id="cap">
+        <option value="none" selected>Inget tak (hela toppen skrivs ut)</option>
+        <option value="200">200 öre/kWh — platå + gravyr TAK</option>
+        <option value="300">300 öre/kWh — platå + gravyr TAK</option>
+        <option value="400">400 öre/kWh — platå + gravyr TAK</option>
+        <option value="500">500 öre/kWh — platå + gravyr TAK</option>
+        <option value="700">700 öre/kWh — platå + gravyr TAK</option>
+      </select>
+      <div class="hint">Extrema toppar blir sköra 1 mm²-pelare i utskrift.
+        Taket graveras på modellen och deklareras i följesedeln.</div>
+    </div>
+    <div class="grp">
+      <label for="zoom">Höjdzoom (avsteg från familjeskalan)</label>
+      <select id="zoom">
+        <option value="1" selected>×1 — familjeskala (jämförbar med allt)</option>
+        <option value="2">×2 — graveras ZOOM ×2</option>
+        <option value="5">×5 — graveras ZOOM ×5</option>
+        <option value="10">×10 — graveras ZOOM ×10</option>
+      </select>
+      <div class="hint">För små elområden (t.ex. SE1) kan familjeskalan bli låg.
+        Zoomad modell är INTE jämförbar med ozoomade — faktorn graveras.</div>
+    </div>
+    <div class="grp">
+      <div class="chk"><input type="checkbox" id="norm">
+        <span>Normera volym mot referens</span></div>
+      <div id="norm-detail">
+        <div class="row2" style="margin-top:6px">
+          <div><select id="norm-measure"></select></div>
+          <div><select id="norm-zone"></select></div>
+        </div>
+        <div class="hint">Höjderna skalas så att totalvolymen blir samma som
+          referensens (samma år). Paret jämför FORM, inte mängd — absolut skala
+          gäller inte längre. Faktorn graveras NORM ×k.</div>
+      </div>
+    </div>
+    <div class="grp">
+      <label for="weeks">Veckoetiketter på höger apron</label>
+      <input type="text" id="weeks" value="1,26,52">
+      <div class="hint">Kommaseparerade veckonummer som graveras per år
+        (utöver årtalet).</div>
+    </div>
+    <div class="grp">
+      <button id="export-btn">Exportera STL (zip)</button>
+      <div class="hint">Zip med modell-STL + text-STL (samma koordinatsystem,
+        importera båda) + följesedel. Exporten vägrar om soliderna inte är
+        vattentäta eller text hamnar under 2,2 mm versalhöjd.</div>
+    </div>
+    <div class="grp">
+      <button class="ghost" id="about-btn">Om &amp; metod</button>
+    </div>
+    <div id="error"></div>
+    <details><summary>Byggrapport (textblock, spärrar)</summary>
+      <div id="buildreport"></div></details>
+  </div>
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="tooltip"></div>
+    <div id="readout"></div>
+    <div id="hud">dra = rotera · hjul = zooma · hovra = värde</div>
+    <div id="about">
+      <button id="about-close" class="ghost">Stäng</button>
+      <h2>Vad är detta?</h2>
+      <p>En datafysikalisering av svensk el som <i>kalenderrelief</i>: varje
+      stapel är en timme (1 mm), varje dygnsblock 24 mm, varje rad en ISO-vecka
+      (1 mm djup). Längs raden syns veckans sociala rytm, nedåt i kolumnerna
+      årstidernas naturliga — elen är superpositionen av de två. Formen är
+      samma som fjärrvärmeparet i artikelns §4.4 och är avsiktligt
+      kommensurabel med det.</p>
+      <h2>Deklarerade skalor (samma i alla exporter)</h2>
+      <ul>
+        <li>Förbrukning och produktion: <b>2 mm = 1 GW</b> (0,002 mm/MW).
+          Samma skala för båda måtten och alla områden — SE1+SE2+SE3+SE4
+          summerar volymmässigt till Sverigemodellen.</li>
+        <li>Spotpris: <b>1 mm = 10 öre/kWh</b>. Nominella priser utan skatt,
+          moms, påslag och nätavgift.</li>
+        <li>Bredd 1 mm = 1 timme; djup 1 mm = 1 vecka; basplatta 1,2 mm.</li>
+      </ul>
+      <p>Avsteg (zoom, volymnormering, pristak, sockel för negativa priser)
+      graveras alltid på objektet och deklareras i följesedeln.</p>
+      <h2>Flerårsläget</h2>
+      <p>Rader läggs kronologiskt med tiden växande mot betraktaren: januari
+      år X+1 ligger direkt framför december år X ("rygg mot rygg"). Inom ett
+      år ligger v52 främst och v1 bakerst; årtal och veckonummer på höger
+      apron gör riktningen läsbar i plast.</p>
+      <h2>Negativa priser och nollplanet</h2>
+      <p>Nollplanet är apronens ovansida. När urvalet innehåller negativa
+      spotpriser höjs hela plattan med en sockel och negativa timmar blir
+      <i>gropar</i> — inget klipps. Sockelhöjden graveras (0 = +N mm).</p>
+      <h2>Datadeklarationer</h2>
+      <ul id="declarations"></ul>
+      <h2>Designgrammatik (kort)</h2>
+      <p>Form F3 (temporal foldning/kalenderrelief). Operatorer: O2
+      (kommensurabla familjer — kärnan), O3 (år/område/mått/tak som moduler),
+      O4 (denna tvilling; WYSIWYG-export). Beslutsdimensioner: dokumenterade
+      i projektets SPEC.md — bl.a. D2 (nollplan/sockel), D3 (tak som synligt
+      val), D4/O2 (volymnormering deklarerad), D5 (familjeskalor), D9
+      (vecka × timme korsar social och naturlig rytm), D13 (produktion bokförs
+      där den produceras, förbrukning där den förbrukas — parning per
+      elområde är attributionsläsningen).</p>
+      <h2>Verifiering</h2>
+      <p>Vyn och STL:en byggs av samma kod (WYSIWYG som arkitektur). Vid
+      export kontrolleras att varje solid är vattentät (varje riktad kant har
+      exakt en motpartner) och har volym &gt; 0; text under 2,2 mm versalhöjd
+      stoppar bygget. Samma geometrikärna körs i Node-testet mot källdata.</p>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
