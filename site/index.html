@@ -102,12 +102,35 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       <div class="hint">Medel graveras på modellen (t.ex. DYGNSMEDEL, GLID 24 H)
         — aggregering slätar timtopparna och är därför ett synligt val.</div>
     </div>
+    <div class="grp" id="cat-row" style="display:none">
+      <label for="pricecat">Typkund (SCB-förbrukarkategori)</label>
+      <select id="pricecat"></select>
+      <div class="hint">15 000+ kWh/år ≈ villa med elvärme; 2 500–4 999 ≈
+        lägenhet/villa utan elvärme. Komponenterna är rikssnitt (SCB EN0301).</div>
+    </div>
+    <div class="grp" id="real-row" style="display:none">
+      <div class="chk"><input type="checkbox" id="realprices" checked>
+        <span>Fasta priser (KPI-justerade)</span></div>
+      <div class="hint">Alla timvärden räknas om till dagens penningvärde med
+        KPI per kalendermånad (SCB, 2020=100). Ur-kryssat = löpande nominella
+        priser. Läget graveras på modellen.</div>
+    </div>
     <div class="grp" id="negtwin-row" style="display:none">
       <div class="chk"><input type="checkbox" id="negtwin">
         <span>Visa negativ-tvillingen</span></div>
-      <div class="hint">Negativa priser är klippta till 0 i huvudmodellen.
-        Tvillingen visar enbart |negativa| priser i samma skala och layout
-        (utan texter) och följer med i exporten som egen STL.</div>
+      <div class="chk" style="margin-top:4px"><input type="checkbox" id="twinmirror">
+        <span>Spegla tvillingen (limmas mot undersidan)</span></div>
+      <div class="hint">Digitalt visas negativa timmar som nedåtstaplar under
+        plattan. I utskrift är huvudmodellen klippt vid 0 och tvillingen bär
+        beloppen som egen STL. Speglad tvilling vänds runt långsidan och limmas
+        mot huvudmodellens undersida — varje negativ timme hamnar exakt under
+        sin cell.</div>
+    </div>
+    <div class="grp">
+      <div class="chk"><input type="checkbox" id="showunder">
+        <span>Förhandsgranska undersidan (QR + text)</span></div>
+      <div class="hint">Undersidans tvåfärgstryck följer alltid med i exporten;
+        här kan det tändas i 3D-vyn (titta underifrån).</div>
     </div>
     <div class="grp" id="cap-row">
       <label for="cap">Pristak (D3 — kapning är ett synligt val)</label>
@@ -195,13 +218,29 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       år X+1 ligger direkt framför december år X ("rygg mot rygg"). Inom ett
       år ligger v52 främst och v1 bakerst; årtal och veckonummer på höger
       apron gör riktningen läsbar i plast.</p>
-      <h2>Negativa priser (D2, revision 1)</h2>
-      <p>Negativa spotpriser klipps till 0 i huvudmodellen — deklarerat och
-      räknat i följesedeln — och redovisas i stället i en
-      <i>negativ-tvilling</i>: samma layout och skala men enbart beloppen av
-      de negativa timmarna, utan texter. Ursprungsbeslutet (gropar under ett
-      förhöjt nollplan) revs upp efter granskning: groparna syntes inte och
-      sockeln kostade filament. Se SPEC_REVISIONS.md.</p>
+      <h2>Negativa priser (D2, revision 1 + 6)</h2>
+      <p>I webbtvillingen visas negativa timmar som <i>nedåtstaplar</i> under
+      plattan — där fungerar det. I utskrift klipps de till 0 i huvudmodellen
+      (deklarerat och räknat) och beloppen bärs av en <i>negativ-tvilling</i>
+      som egen STL, valfritt speglad så att den kan limmas mot huvudmodellens
+      undersida med varje negativ timme exakt under sin cell. Se
+      SPEC_REVISIONS.md.</p>
+      <h2>Penningvärde och prismått (revision 6)</h2>
+      <p><b>Fasta priser</b> (default, urkryssbart): alla prisvärden
+      KPI-justeras till senaste månad med SCB:s skuggindex 2020=100, per
+      timmes kalendermånad. Läget graveras (FASTA/LÖPANDE PRISER).</p>
+      <p><b>Spotkostnad</b> = spotpris × förbrukning per timme, summerad över
+      elområdena (zonens pris × zonens last), i MSEK/h — multiplikationen
+      som fjärrvärmeparets kostnadsyta gör fysisk. Skala 1 mm = 2 MSEK/h.</p>
+      <p><b>Totalpris hushåll (modell)</b>: timpris = (spot + påslag + nätpris
+      + elskatt) × 1,25 moms, där påslaget per halvår kalibrerats mot SCB:s
+      redovisade hushållspriser (EN0301, per förbrukarkategori) — modellen
+      träffar SCB:s halvårstotaler inom 0,1 öre. <b>Brasklappar:</b>
+      komponenterna är rikssnitt i öre/kWh med fasta avgifter utslagna på
+      förbrukningen; timprofilen är spotprisets (fastprisavtal och timvis
+      nätdebitering fångas inte); elområdesvyn använder zonens spot med
+      nationella komponenter; halvår utan SCB-data extrapolerar senast kända
+      komponenter (räknas och deklareras).</p>
       <h2>Undersidan</h2>
       <p>Undersidan bär QR-kod (till denna sida) och källtext, speglade så de
       läses rättvänt underifrån, som flush tvåfärgstryck i skiktet 0–0,6 mm:

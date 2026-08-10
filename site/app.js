@@ -746,24 +746,17 @@ function buildTextSolid(cfg, glyphData, plate) {
     placeTextBlock(tris, glyphData, days[d], cap, x, 6.9, z0, z1, report, `veckodag ${days[d]}`);
   }
 
-  // 3. Höger apron: per år — årtal vid årsblockets framkant + valda veckonummer.
+  // 3. Höger apron: per år — veckonummer vid sina rader FÖRST, sedan årtalet
+  //   direkt "ovanför" (bakom, +y) mittenveckans etikett: mitt i året, ingen
+  //   tvekan om vilket block årtalet tillhör (revision 6).
   //   Radindex i rowsMeta (inkl. årsskåror): idx(yi, w0) = veckostart + yi skåror + w0.
   const rowIdx = (yi, w0) => plate.weekStart[yi] + yi + w0;
   const rowY = (idx) => FRONT_APRON + (N - 1 - idx) * ROW_D;
-  const yearBands = [];
   cfg.years.forEach((yd, yi) => {
     const yFront = rowY(rowIdx(yi, yd.weeks - 1));             // årets nyaste rad
     const yBack = rowY(rowIdx(yi, 0)) + ROW_D;
-    const capY = 3.6;
-    const yearStr = String(yd.isoYear);
-    const lineY = layoutLine(glyphData, yearStr, capY);
-    const yYear = Math.min(yFront + 1.2, yBack - capY - 1.2);
-    const xYear = DATA_W + (RIGHT_APRON - lineY.width) / 2;
-    placeTextBlock(tris, glyphData, yearStr, capY, xYear, yYear, z0, z1, report,
-      `år ${yearStr}`);
-    yearBands.push({ y0: yYear - 0.8, y1: yYear + capY + 0.8 });
-
     const capW = 2.6;
+    const weekBands = [];
     let prevBand = null;
     for (const w of cfg.weekLabels) {
       if (w < 1 || w > yd.weeks) continue;
@@ -772,10 +765,8 @@ function buildTextSolid(cfg, glyphData, plate) {
       const lw = layoutLine(glyphData, label, capW);
       let yLab = yRow + ROW_D / 2 - capW / 2;
       yLab = Math.max(yFront + 0.4, Math.min(yLab, yBack - capW - 0.4));
-      const band = { y0: yLab - 0.5, y1: yLab + capW + 0.5 };
-      const hitsYear = yearBands.some(b => band.y0 < b.y1 && band.y1 > b.y0);
-      const hitsPrev = prevBand && band.y0 < prevBand.y1 && band.y1 > prevBand.y0;
-      if (hitsYear || hitsPrev) {
+      const band = { y0: yLab - 0.5, y1: yLab + capW + 0.5, w };
+      if (prevBand && band.y0 < prevBand.y1 && band.y1 > prevBand.y0) {
         report.push({ name: `vecka v${w} (${yd.isoYear})`, text: label,
                       skipped: "överlapp på apronen — hoppad, deklareras" });
         continue;
@@ -783,8 +774,32 @@ function buildTextSolid(cfg, glyphData, plate) {
       const xLab = DATA_W + (RIGHT_APRON - lw.width) / 2;
       placeTextBlock(tris, glyphData, label, capW, xLab, yLab, z0, z1, report,
         `vecka v${w} (${yd.isoYear})`);
+      weekBands.push(band);
       prevBand = band;
     }
+    // årtal: ovanför den etikett som ligger närmast årets mitt, annars mitt i blocket
+    const capY = 3.6;
+    const yearStr = String(yd.isoYear);
+    const lineY = layoutLine(glyphData, yearStr, capY);
+    const yMid = (yFront + yBack) / 2;
+    let anchor = null;
+    for (const b of weekBands) {
+      if (anchor === null || Math.abs((b.y0 + b.y1) / 2 - yMid) <
+          Math.abs((anchor.y0 + anchor.y1) / 2 - yMid)) anchor = b;
+    }
+    let yYear = anchor ? anchor.y1 + 0.4 : yMid - capY / 2;
+    // knuffa bakåt (+y) tills fri från alla veckoband, håll inom blocket
+    const yMax = yBack - capY - 0.6;
+    for (let guard = 0; guard < 60; guard++) {
+      const band = { y0: yYear - 0.6, y1: yYear + capY + 0.6 };
+      const hit = weekBands.find(b => band.y0 < b.y1 && band.y1 > b.y0);
+      if (!hit || yYear >= yMax) break;
+      yYear = Math.min(yMax, hit.y1 + 0.4);
+    }
+    yYear = Math.max(yFront + 0.4, Math.min(yYear, yMax));
+    const xYear = DATA_W + (RIGHT_APRON - lineY.width) / 2;
+    placeTextBlock(tris, glyphData, yearStr, capY, xYear, yYear, z0, z1, report,
+      `år ${yearStr}`);
   });
 
   // Golvkontroll över hela rapporten (spärren har redan vägrat per block,
@@ -843,9 +858,14 @@ function buildUnderside(cfg, glyphData, qrData, plate) {
   const size = qrData.size;
   const sym = size * QR_MODULE;
 
-  // layout i underifrån-vy (u = W−x, v = y): QR till höger, text till vänster
-  const uQR0 = W - 8 - sym, vQR0 = Math.max(6, (D - sym) / 2);
-  if (sym + 2 * QR_MODULE * 2 > D - 8) {
+  // layout i underifrån-vy (u = W−x, v = y). Två lägen:
+  //  - bred modell (D ≤ W): QR till höger, text till vänster (sida vid sida)
+  //  - djup modell (D > W, långa tidsserier): texten får HELA bredden,
+  //    QR-koden läggs UNDER textblocket (närmare fronten)
+  const stacked = D > W;
+  const uQR0 = stacked ? (W - sym) / 2 : W - 8 - sym;
+  const vQR0 = stacked ? 8 : Math.max(6, (D - sym) / 2);
+  if (sym + 2 * QR_MODULE * 2 > (stacked ? W : D) - 8) {
     throw new Error("BYGGSPÄRR: QR-symbolen ryms inte på undersidan");
   }
   // verkliga koordinater för QR-rutnätet (spegling: u → x = W−u)
@@ -872,18 +892,18 @@ function buildUnderside(cfg, glyphData, qrData, plate) {
 
   // textblock: rader uppifrån (hög v) och nedåt, i u-rymd, sedan speglade
   const capU = 2.8, pitch = 1.45 * capU;
-  const uText0 = 8, uTextMax = uQR0 - 2 * QR_MODULE - 4;
+  const uText0 = 8, uTextMax = stacked ? W - 8 : uQR0 - 2 * QR_MODULE - 4;
+  const vTextFloor = stacked ? vQR0 + sym + 4 : 6; // text aldrig in i QR-zonen
   const lines = (cfg.underLines || []).slice();
-  const maxLines = Math.floor((D - 12) / pitch);
-  const dropped = lines.length > maxLines ? lines.splice(maxLines) : [];
+  const maxLines = Math.floor((D - 6 - vTextFloor) / pitch);
+  const dropped = lines.length > maxLines ? lines.splice(Math.max(0, maxLines)) : [];
   for (const dl of dropped) report.push({ name: "undersida rad", text: dl,
     skipped: "ryms inte på undersidan — deklareras" });
   // textfältets rektangel (u-rymd) → verklig
-  const blockH = lines.length ? (lines.length - 1) * pitch + capU : 0;
-  const vTop = Math.min(D - 6, vQR0 + sym);
+  const vTop = stacked ? D - 6 : Math.min(D - 6, vQR0 + sym);
   const vBase0 = vTop - capU;
   const rectU = [uText0 - 2, uTextMax + 2];
-  const rectV = [Math.max(4, vBase0 - (lines.length - 1) * pitch - 2), vTop + 2];
+  const rectV = [Math.max(vTextFloor - 2, vBase0 - (lines.length - 1) * pitch - 2), vTop + 2];
   const rectX = [W - rectU[1], W - rectU[0]];
 
   // glyfgrupper (ytterring + dess hål, via parent-kopplingen) i verkliga,
@@ -950,6 +970,57 @@ function buildUnderside(cfg, glyphData, qrData, plate) {
   }
   return { bgTris: bg, inkTris: ink, report,
            qr: { x0: xQR0, y0: vQR0, module: QR_MODULE, size } };
+}
+
+// ------------------------------------------------------- spegling + nedåtstaplar
+// Spegla en triangelsoppa i x (x → W−x) med bevarad utåtriktning (vindningen
+// vänds). Används för negativ-tvillingens limningsläge: efter fysisk vändning
+// runt y-axeln hamnar varje negativ timme exakt under sin cell i huvudmodellen.
+function mirrorTrisX(tris, W) {
+  const out = new Array(tris.length);
+  for (let t = 0; t < tris.length; t += 9) {
+    // a, b, c → a', c', b' (byt b/c för att vända vindningen)
+    out[t]     = W - tris[t];     out[t + 1] = tris[t + 1]; out[t + 2] = tris[t + 2];
+    out[t + 3] = W - tris[t + 6]; out[t + 4] = tris[t + 7]; out[t + 5] = tris[t + 8];
+    out[t + 6] = W - tris[t + 3]; out[t + 7] = tris[t + 4]; out[t + 8] = tris[t + 5];
+  }
+  return out;
+}
+
+// Digitala nedåtstaplar: negativa timmar som staplar som hänger under plattan
+// (endast skärmvyn — utskriften använder klippt huvudmodell + tvilling).
+function buildNegativeUnderbars(cfg, plate) {
+  const ch = computeHeights({ ...cfg, cap: null, floor: null });
+  const N = plate.rowsMeta.length;
+  const xs = [];
+  for (let d = 0; d < 7; d++) for (let h = 0; h <= 24; h++) xs.push(d * 25 + h);
+  const ys = [];
+  for (let i = 0; i <= N; i++) ys.push(FRONT_APRON + i * ROW_D);
+  const H = [];
+  for (let j = 0; j < N; j++) {
+    const meta = plate.rowsMeta[N - 1 - j];
+    const row = new Array(xs.length - 1).fill(null);
+    if (meta && !meta.gap) {
+      for (let i = 0; i < xs.length - 1; i++) {
+        const x0 = xs[i];
+        const d = Math.floor(x0 / 25), hh = x0 - d * 25;
+        if (hh >= 24) continue;
+        const c = plate.weekStart[meta.yi] + meta.w;
+        const v = ch.rows[c][d * 24 + hh];
+        if (v !== null && v < 0) row[i] = -v; // djup i mm
+      }
+    }
+    H.push(row);
+  }
+  const up = heightfieldSolid(xs, ys, H, 0);
+  // spegla i z (z → −z) med vänd vindning: staplarna hänger under z = 0
+  const out = new Array(up.length);
+  for (let t = 0; t < up.length; t += 9) {
+    out[t]     = up[t];     out[t + 1] = up[t + 1]; out[t + 2] = -up[t + 2];
+    out[t + 3] = up[t + 6]; out[t + 4] = up[t + 7]; out[t + 5] = -up[t + 8];
+    out[t + 6] = up[t + 3]; out[t + 7] = up[t + 4]; out[t + 8] = -up[t + 5];
+  }
+  return out;
 }
 
 // --------------------------------------------------------------- STL + kontroll
@@ -1077,7 +1148,9 @@ const state = {
   cap: null, zoom: 1,
   norm: false, normMeasure: "consumption", normZone: "SE2",
   resolution: "hour", maWindow: 24,
-  showNegTwin: false,
+  showNegTwin: false, twinMirror: false, showUnder: false,
+  realPrices: true, priceCategory: "DE",
+  scb: null, notes: null, negBars: null,
   weekLabels: [1, 26, 52],
   dataCache: new Map(),
   plate: null, textSolid: null, under: null, twinPlate: null,
@@ -1125,6 +1198,96 @@ async function gatherYearsData(measure, zone, years) {
 }
 
 function measureInfo(m) { return state.index.measures[m]; }
+const MONEY = ["price", "cost", "totalpris"];
+const isMoney = (m) => MONEY.includes(m);
+const ZONES4 = ["SE1", "SE2", "SE3", "SE4"];
+
+// Bygger serien för ett mått (även beräknade: spotkostnad, totalpris) och
+// applicerar KPI-deflatering ("fasta priser") per timmes kalendermånad.
+// notes samlar deklarationer (extrapolerade komponenter, KPI-luckor).
+async function seriesFor(measure, zone, years) {
+  const info = measureInfo(measure);
+  const notes = { extrapolatedHours: 0, kpiFallbackHours: 0 };
+  const yearsData = [];
+  for (const y of years) {
+    if (info.computed === "cost") {
+      // spotkostnad = Σ zon (spotpris × förbrukning); MSEK/h = öre/kWh × MW × 1e-5
+      const p = await loadYear("price", y);
+      const c = await loadYear("consumption", y);
+      const n = p.weeks * 168;
+      const values = new Array(n).fill(null);
+      for (let i = 0; i < n; i++) {
+        if (zone === "SE") {
+          let s = 0, ok = true;
+          for (const z of ZONES4) {
+            const pv = p.zones[z][i], cv = c.zones[z][i];
+            if (pv === null || pv === undefined || cv === null || cv === undefined) { ok = false; break; }
+            s += pv * cv;
+          }
+          if (ok) values[i] = s * 1e-5;
+        } else {
+          const pv = p.zones[zone][i], cv = c.zones[zone][i];
+          if (pv !== null && pv !== undefined && cv !== null && cv !== undefined) {
+            values[i] = pv * cv * 1e-5;
+          }
+        }
+      }
+      yearsData.push({ isoYear: y, weeks: p.weeks, values });
+    } else if (info.computed === "totalpris") {
+      // (spot + påslag + nät + elskatt) × 1,25 — komponenter per halvår & kategori
+      const p = await loadYear("price", y);
+      const cat = state.priceCategory;
+      const start = isoWeek1Monday(y);
+      const halvar = state.scb.halvar;
+      const keys = Object.keys(halvar).sort();
+      const n = p.weeks * 168;
+      const values = new Array(n).fill(null);
+      for (let i = 0; i < n; i++) {
+        const pv = p.zones[zone][i];
+        if (pv === null || pv === undefined) continue;
+        const d = new Date(start);
+        d.setUTCDate(d.getUTCDate() + Math.floor(i / 24));
+        const hk = `${d.getUTCFullYear()}H${d.getUTCMonth() < 6 ? 1 : 2}`;
+        let comp = halvar[hk] && halvar[hk][cat];
+        if (!comp || comp.paslag === null) {
+          // senaste kända halvår — extrapolering, deklareras
+          for (let k = keys.length - 1; k >= 0; k--) {
+            const c2 = halvar[keys[k]][cat];
+            if (keys[k] <= hk && c2 && c2.paslag !== null) { comp = c2; break; }
+          }
+          notes.extrapolatedHours++;
+        }
+        if (comp && comp.paslag !== null) {
+          values[i] = (pv + comp.paslag + comp.nat + comp.skatt) * state.scb.momsFactor;
+        }
+      }
+      yearsData.push({ isoYear: y, weeks: p.weeks, values });
+    } else {
+      const f = await loadYear(measure, y);
+      yearsData.push({ isoYear: y, weeks: f.weeks, values: f.zones[zone] });
+    }
+  }
+  // KPI-deflatering till fasta priser (default) — per timmes kalendermånad
+  if (isMoney(measure) && state.realPrices) {
+    const months = state.scb.kpi.months;
+    const refIdx = months[state.scb.kpi.ref];
+    for (const yd of yearsData) {
+      const start = isoWeek1Monday(yd.isoYear);
+      const vals = yd.values.slice();
+      for (let i = 0; i < vals.length; i++) {
+        if (vals[i] === null || vals[i] === undefined) continue;
+        const d = new Date(start);
+        d.setUTCDate(d.getUTCDate() + Math.floor(i / 24));
+        const mk = d.toISOString().slice(0, 7);
+        let idx = months[mk];
+        if (idx === undefined) { idx = refIdx; notes.kpiFallbackHours++; }
+        vals[i] = vals[i] * refIdx / idx;
+      }
+      yd.values = vals;
+    }
+  }
+  return { yearsData, notes };
+}
 
 function zoneLabel(z) { return z === "SE" ? "Sverige" : z; }
 
@@ -1132,14 +1295,14 @@ function zoneLabel(z) { return z === "SE" ? "Sverige" : z; }
 async function rebuild() {
   const info = measureInfo(state.measure);
   const years = selectedYears();
-  const raw = await gatherYearsData(state.measure, state.zone, years);
+  const { yearsData: raw, notes } = await seriesFor(state.measure, state.zone, years);
   const yearsData = transformSeries(raw, state.resolution, state.maWindow);
 
-  const isPrice = state.measure === "price";
-  const cap = isPrice ? state.cap : null;
-  // D2 (rev 1): negativa priser KLIPPS till 0 i huvudmodellen (deklarerat,
-  // räknat) och redovisas i negativ-tvillingen i stället för som gropar.
-  const floor = isPrice ? 0 : null;
+  const money = isMoney(state.measure);
+  const cap = money ? state.cap : null;
+  // D2 (rev 1): negativa värden KLIPPS till 0 i utskriftsmodellen (deklarerat,
+  // räknat); digitalt visas de som nedåtstaplar och i utskrift som tvilling.
+  const floor = money ? 0 : null;
 
   let normFactor = 1, normNote = null;
   if (state.norm) {
@@ -1148,11 +1311,11 @@ async function rebuild() {
     if (missingYears.length) {
       throw new Error(`Referensserien ${refInfo.label} saknar år ${missingYears.join(", ")}`);
     }
-    const refRaw = await gatherYearsData(state.normMeasure, state.normZone, years);
-    const refData = transformSeries(refRaw, state.resolution, state.maWindow);
+    const refRes = await seriesFor(state.normMeasure, state.normZone, years);
+    const refData = transformSeries(refRes.yearsData, state.resolution, state.maWindow);
     const vRef = seriesVolume(refData, refInfo.scalePerUnit,
-      state.normMeasure === "price" ? state.cap : null,
-      state.normMeasure === "price" ? 0 : null);
+      isMoney(state.normMeasure) ? state.cap : null,
+      isMoney(state.normMeasure) ? 0 : null);
     const vOwn = seriesVolume(yearsData, info.scalePerUnit, cap, floor);
     if (vOwn <= 0) throw new Error("Egen volym är 0 — kan inte normera");
     normFactor = vRef / vOwn;
@@ -1168,25 +1331,30 @@ async function rebuild() {
 
   const plate = buildPlate(cfg);
 
-  // negativa timmar (efter transform) → tvilling med |negativa|, tak 100 öre
+  // negativa timmar (efter transform) → tvilling + digitala nedåtstaplar
   let negCount = 0;
-  if (isPrice) for (const yd of yearsData) for (const v of yd.values) if (v !== null && v < 0) negCount++;
-  let twinPlate = null;
+  if (money) for (const yd of yearsData) for (const v of yd.values) if (v !== null && v < 0) negCount++;
+  let twinPlate = null, negBars = null;
   if (negCount > 0) {
+    const magCap = state.measure === "cost" ? Infinity : 100;
     const twinData = yearsData.map(yd => ({ isoYear: yd.isoYear, weeks: yd.weeks,
-      values: yd.values.map(v => v === null ? null : (v < 0 ? Math.min(-v, 100) : 0)) }));
+      values: yd.values.map(v => v === null ? null : (v < 0 ? Math.min(-v, magCap) : 0)) }));
     twinPlate = buildPlate({ ...cfg, yearsData: twinData, cap: null, floor: null,
                              underT: 0, normFactor: 1 });
+    negBars = buildNegativeUnderbars(cfg, plate);
   }
 
-  // titel: OMRÅDE — MÅTT ÅR [· UPPLÖSNING] [· TAK] [· NORM] [· ZOOM]
-  const parts = [`${zoneLabel(state.zone)} — ${info.label}`.toUpperCase()];
+  // titel: OMRÅDE · MÅTT [KAT] · ÅR [· UPPLÖSNING] [· TAK] [· NORM] [· ZOOM] [· PRISLÄGE]
+  const engr = info.engr || info.label.toUpperCase();
+  const parts = [`${zoneLabel(state.zone).toUpperCase()} · ${engr}` +
+    (state.measure === "totalpris" ? ` ${CAT_SHORT[state.priceCategory]}` : "")];
   parts.push(years.length > 1 ? `${years[0]}–${years[years.length-1]}` : String(years[0]));
   const resSuf = resolutionSuffix();
   if (resSuf) parts.push(resSuf);
-  if (cap !== null && cap !== undefined) parts.push(`TAK ${cap} ÖRE`);
+  if (cap !== null && cap !== undefined) parts.push(`TAK ${cap}`);
   if (state.norm) parts.push(`NORM ×${fmtSw(normFactor, 2)}`);
   if (state.zoom !== 1) parts.push(`ZOOM ×${state.zoom}`);
+  if (money) parts.push(state.realPrices ? "FASTA PRISER" : "LÖPANDE PRISER");
   cfg.title = parts.join(" · ");
 
   const text = buildTextSolid(cfg, state.glyphs, plate);
@@ -1198,18 +1366,29 @@ async function rebuild() {
       (state.zoom !== 1 ? ` × ZOOM ${state.zoom}` : "") +
       (state.norm ? ` × NORM ${fmtSw(normFactor, 2)}` : ""),
     "1 MM = 1 TIMME · 1 MM = 1 VECKA",
-    "KÄLLA: NORD POOL / ENTSO-E",
-    "HEDIN.IT/EL3D",
   ];
+  if (money) cfg.underLines.push(state.realPrices
+    ? `FASTA PRISER: KPI-JUSTERAT TILL ${state.scb.kpi.ref}`
+    : "LÖPANDE (NOMINELLA) PRISER");
+  if (state.measure === "totalpris") {
+    cfg.underLines.push("MODELL: SPOT + PÅSLAG + NÄT + SKATT, ×1,25 MOMS (SCB)");
+  }
+  cfg.underLines.push(
+    state.measure === "totalpris" ? "KÄLLA: NORD POOL / SCB" : "KÄLLA: NORD POOL / ENTSO-E",
+    "HEDIN.IT/EL3D");
   const under = buildUnderside(cfg, state.glyphs, state.qr, plate);
 
   state.plate = plate; state.textSolid = text; state.under = under;
-  state.twinPlate = twinPlate; state.negCount = negCount; state.cfg = cfg;
+  state.twinPlate = twinPlate; state.negBars = negBars;
+  state.negCount = negCount; state.cfg = cfg; state.notes = notes;
   state.lastNormFactor = normFactor; state.normNote = normNote;
   refreshTwinToggle();
   updateScene();
   updateReadout(plate, text, cfg);
 }
+
+const CAT_SHORT = { DA: "<1000 KWH", DB: "1000–2499 KWH", DC: "2500–4999 KWH",
+                    DD: "5000–14999 KWH", DE: "15000+ KWH" };
 
 function refreshTwinToggle() {
   const row = $("negtwin-row");
@@ -1221,7 +1400,7 @@ function refreshTwinToggle() {
 
 // ------------------------------------------------------------------ three.js
 let scene, camera, renderer, canvasEl, rafPending = false;
-let plateMesh, textMesh, underBgMesh, underInkMesh;
+let plateMesh, textMesh, underBgMesh, underInkMesh, negBarsMesh;
 const view = { yaw: -0.6, pitch: 0.9, dist: 320, cx: 96, cy: 60, fitted: false };
 
 function initThree() {
@@ -1280,18 +1459,30 @@ function meshFromTris(tris, color) {
 }
 
 function updateScene() {
-  for (const m of [plateMesh, textMesh, underBgMesh, underInkMesh]) {
+  for (const m of [plateMesh, textMesh, underBgMesh, underInkMesh, negBarsMesh]) {
     if (m) { scene.remove(m); m.geometry.dispose(); }
   }
-  plateMesh = textMesh = underBgMesh = underInkMesh = null;
+  plateMesh = textMesh = underBgMesh = underInkMesh = negBarsMesh = null;
   const plate = state.showNegTwin && state.twinPlate ? state.twinPlate : state.plate;
-  plateMesh = meshFromTris(plate.tris, 0xc96f4a);
+  let plateTris = plate.tris;
+  if (state.showNegTwin && state.twinMirror) {
+    plateTris = mirrorTrisX(plateTris, plate.widthMM); // förhandsgranska limningsläget
+  }
+  plateMesh = meshFromTris(plateTris, 0xc96f4a);
   scene.add(plateMesh);
   if (!state.showNegTwin) {
     textMesh = meshFromTris(state.textSolid.tris, 0x2f5a8f);
-    underBgMesh = meshFromTris(state.under.bgTris, 0xf3ecd9);
-    underInkMesh = meshFromTris(state.under.inkTris, 0x25313d);
-    scene.add(textMesh, underBgMesh, underInkMesh);
+    scene.add(textMesh);
+    if (state.negBars) {
+      // negativa timmar digitalt: nedåtstaplar under plattan (utskrift: tvilling)
+      negBarsMesh = meshFromTris(state.negBars, 0x8f4a2f);
+      scene.add(negBarsMesh);
+    }
+    if (state.showUnder) {
+      underBgMesh = meshFromTris(state.under.bgTris, 0xf3ecd9);
+      underInkMesh = meshFromTris(state.under.inkTris, 0x25313d);
+      scene.add(underBgMesh, underInkMesh);
+    }
   }
   view.cx = plate.widthMM / 2; view.cy = plate.depthMM / 2;
   // passa in en gång per modellbygge (inte per vinkel — G4-läxan)
@@ -1358,7 +1549,7 @@ function cellAt(x, y) {
   const resNote = state.resolution === "hour" ? ""
     : ` <i>(${(resolutionSuffix() || "").toLowerCase()})</i>`;
   const val = v === null || v === undefined ? "saknas"
-    : `${fmtSw(v, state.measure === "price" ? 1 : 0)} ${unit}${resNote}` +
+    : `${fmtSw(v, isMoney(state.measure) ? 1 : 0)} ${unit}${resNote}` +
       (state.showNegTwin ? " <i>(negativ, tvilling)</i>" : "");
   return `<b>${DAY_NAMES[d]} v${w} ${yd.isoYear}</b> (${ds}) kl ${String(hh).padStart(2,"0")}<br>${val}`;
 }
@@ -1376,14 +1567,25 @@ function updateReadout(plate, text, cfg) {
     (state.zoom !== 1 ? ` × zoom ${state.zoom}` : "") +
     (state.norm ? ` × norm ${fmtSw(state.lastNormFactor, 3)} (mot ${state.normNote})` : ""));
   if (state.resolution !== "hour") lines.push(`Upplösning: ${resolutionSuffix()}`);
+  if (isMoney(state.measure)) {
+    lines.push(state.realPrices
+      ? `Fasta priser: KPI-justerat till ${state.scb.kpi.ref} (SCB, 2020=100)`
+      : `Löpande (nominella) priser`);
+  }
+  if (state.measure === "totalpris") {
+    lines.push(`Modell: (spot + påslag + nät + elskatt) × 1,25 moms — SCB-kalibrerad; ` +
+      `typkund ${state.scb.categories[state.priceCategory]}`);
+    if (state.notes && state.notes.extrapolatedHours) {
+      lines.push(`${state.notes.extrapolatedHours.toLocaleString("sv-SE")} timmar använder ` +
+        `senast kända SCB-komponenter (extrapolerat)`);
+    }
+  }
   if (s.capped) lines.push(`${s.capped} timmar kapade i taket (platå)`);
-  if (state.negCount) lines.push(`${state.negCount} timmar med negativt pris — klippta ` +
-    `till 0 i huvudmodellen; se negativ-tvillingen`);
+  if (state.negCount) lines.push(`${state.negCount} timmar negativa — nedåtstaplar ` +
+    `digitalt; i utskrift klippta till 0 + egen tvilling-STL`);
   if (s.missing) lines.push(`${s.missing} saknade timmar (visas på nollplanet)`);
-  lines.push(`Undersida: QR (${fmtSw(QR_MODULE, 2)} mm/modul) + källtext i två ` +
-    `kontrastfärger, 0–${fmtSw(UNDER_T, 1)} mm`);
-  if (state.showNegTwin) lines.push(`<b>Visar negativ-tvillingen</b> — endast ` +
-    `|negativa| priser, samma layout, utan texter`);
+  if (state.showNegTwin) lines.push(`<b>Visar negativ-tvillingen</b>` +
+    (state.twinMirror ? ` (speglad för limning mot undersidan)` : ``));
   $("readout").innerHTML = lines.map(l => `<div>${l}</div>`).join("");
 
   const rep = text.report.map(b => b.skipped
@@ -1416,8 +1618,16 @@ function foljesedel(plate, text, cfg) {
   L.push(`  *_under_botten.stl — bakgrundsskikt 0–${fmtSw(UNDER_T,1)} mm på HELA undersidan, LJUS färg`);
   L.push("  *_under_tryck.stl  — QR-kod + källtext på undersidan, MÖRK färg");
   if (state.negCount) {
-    L.push("  *_negativ_modell.stl — TVILLING: endast |negativa| priser, samma layout,");
-    L.push("      utan texter/undersida. Skrivs ut separat (egen platta).");
+    if (state.twinMirror) {
+      L.push("  *_negativ_SPEGLAD_modell.stl — TVILLING, SPEGLAD i x för limning:");
+      L.push("      skriv ut, vänd runt LÅNGSIDANS axel (y) och limma mot huvud-");
+      L.push("      modellens undersida — varje negativ timme hamnar exakt under");
+      L.push("      sin cell. OBS: döljer undersidans QR/text; basplattorna ger");
+      L.push("      2,4 mm mellan nollplanen (deklarerat).");
+    } else {
+      L.push("  *_negativ_modell.stl — TVILLING: endast |negativa| värden, samma");
+      L.push("      layout, utan texter/undersida. Skrivs ut separat (egen platta).");
+    }
   }
   L.push("  QR och undersidestext är SPEGLADE i filerna och läses rättvänt underifrån.");
   L.push("");
@@ -1434,6 +1644,29 @@ function foljesedel(plate, text, cfg) {
     L.push(`  UPPLÖSNING: ${resolutionSuffix()} — värdena är medelvärden` +
       (state.resolution === "ma" ? ` (centrerat glidande fönster ${state.maWindow} h)` : "") + ".");
   }
+  if (isMoney(state.measure)) {
+    L.push(state.realPrices
+      ? `  PRISLÄGE: FASTA PRISER — KPI-justerat till ${state.scb.kpi.ref} ` +
+        `(SCB skuggindex 2020=100, per kalendermånad).`
+      : "  PRISLÄGE: LÖPANDE (nominella) priser.");
+  }
+  if (state.measure === "cost") {
+    L.push("  SPOTKOSTNAD = spotpris × förbrukning per timme, summerad över");
+    L.push("  elområdena (zonens pris × zonens last). Enhet MSEK/h.");
+  }
+  if (state.measure === "totalpris") {
+    L.push(`  TOTALPRIS (MODELL), typkund ${state.scb.categories[state.priceCategory]}:`);
+    L.push("  timpris = (spot + påslag + nätpris + elskatt) × 1,25 moms, där");
+    L.push("  påslaget per halvår kalibrerats så att halvårssnittet träffar SCB:s");
+    L.push("  redovisade hushållspriser (EN0301). BRASKLAPPAR: rikssnitt i öre/kWh");
+    L.push("  (fasta avgifter utslagna); timprofilen är spotens — fastprisavtal");
+    L.push("  och timvis nätdebitering fångas inte; zonmodell = zonens spot +");
+    L.push("  nationella komponenter.");
+    if (state.notes && state.notes.extrapolatedHours) {
+      L.push(`  ${state.notes.extrapolatedHours} timmar använder senast kända ` +
+        "SCB-komponenter (extrapolerat).");
+    }
+  }
   L.push("");
   L.push("LAYOUT:");
   L.push("  Raderna är veckor. Tiden växer mot betraktaren: januari år X+1 ligger");
@@ -1446,9 +1679,10 @@ function foljesedel(plate, text, cfg) {
   if (cfg.cap !== null && cfg.cap !== undefined)
     L.push(`  Pristak ${cfg.cap} öre/kWh: ${s.capped} timmar kapade till platå (gravyr TAK).`);
   if (state.negCount) {
-    L.push(`  Negativa priser: ${state.negCount} timmar — KLIPPTA till 0 i huvudmodellen`);
-    L.push("  (D2-revision 1). Tvillingfilen visar dem som |öre/kWh| i samma skala,");
-    L.push("  tak 100 öre. Ställ tvillingen bakom/bredvid huvudmodellen.");
+    L.push(`  Negativa värden: ${state.negCount} timmar — KLIPPTA till 0 i den utskrivna`);
+    L.push("  huvudmodellen (D2-revision 1); i webbtvillingen visas de som nedåt-");
+    L.push("  staplar under plattan. Tvillingfilen bär beloppen i samma skala" +
+      (state.measure === "cost" ? "." : ", tak 100 öre."));
   }
   for (const y of years) {
     const f = state.dataCache.get(`${state.measure}_${y}`);
@@ -1515,8 +1749,12 @@ async function doExport() {
       { name: `${tag}_under_tryck.stl`, data: trisToBinarySTL(under.inkTris, tag + "_ut") },
     ];
     if (state.twinPlate) {
-      files.push({ name: `${tag}_negativ_modell.stl`,
-                   data: trisToBinarySTL(state.twinPlate.tris, tag + "_neg") });
+      const twinTris = state.twinMirror
+        ? mirrorTrisX(state.twinPlate.tris, state.twinPlate.widthMM)
+        : state.twinPlate.tris;
+      const suffix = state.twinMirror ? "_negativ_SPEGLAD_modell.stl" : "_negativ_modell.stl";
+      files.push({ name: `${tag}${suffix}`,
+                   data: trisToBinarySTL(twinTris, tag + "_neg") });
     }
     files.push({ name: "FOLJESEDEL.txt", data: foljesedel(plate, text, state.cfg) });
     const zip = makeZip(files);
@@ -1564,8 +1802,25 @@ function refreshToSelect() {
     : "Flera år staplas rygg mot rygg, nyaste året främst.";
 }
 
+const CAP_OPTIONS = {
+  ore: [["none", "Inget tak (hela toppen skrivs ut)"], [200, "200 öre/kWh"],
+        [300, "300 öre/kWh"], [400, "400 öre/kWh"], [500, "500 öre/kWh"],
+        [700, "700 öre/kWh"]],
+  msek: [["none", "Inget tak (hela toppen skrivs ut)"], [25, "25 MSEK/h"],
+         [50, "50 MSEK/h"], [100, "100 MSEK/h"], [150, "150 MSEK/h"]],
+};
 function refreshVisibility() {
-  $("cap-row").style.display = state.measure === "price" ? "" : "none";
+  const money = isMoney(state.measure);
+  $("cap-row").style.display = money ? "" : "none";
+  $("real-row").style.display = money ? "" : "none";
+  $("cat-row").style.display = state.measure === "totalpris" ? "" : "none";
+  const opts = state.measure === "cost" ? CAP_OPTIONS.msek : CAP_OPTIONS.ore;
+  const capSel = $("cap");
+  capSel.innerHTML = opts.map(([v, t]) =>
+    `<option value="${v}"${v === "none" ? " selected" : ""}>${t}` +
+    `${v !== "none" ? " — platå + gravyr TAK" : ""}</option>`).join("");
+  if (state.cap !== null && !opts.some(([v]) => v === state.cap)) state.cap = null;
+  capSel.value = state.cap === null ? "none" : String(state.cap);
   $("norm-detail").style.display = state.norm ? "" : "none";
 }
 
@@ -1620,6 +1875,23 @@ function bindUI() {
     updateScene();
     updateReadout(state.plate, state.textSolid, state.cfg);
   });
+  $("twinmirror").addEventListener("change", async (e) => {
+    state.twinMirror = e.target.checked;
+    updateScene();
+    updateReadout(state.plate, state.textSolid, state.cfg);
+  });
+  $("showunder").addEventListener("change", async (e) => {
+    state.showUnder = e.target.checked;
+    updateScene();
+  });
+  $("realprices").addEventListener("change", async (e) => {
+    state.realPrices = e.target.checked;
+    await onChange();
+  });
+  $("pricecat").addEventListener("change", async (e) => {
+    state.priceCategory = e.target.value;
+    await onChange();
+  });
   $("export-btn").addEventListener("click", doExport);
   $("about-btn").addEventListener("click", () => {
     $("about").style.display = $("about").style.display === "none" ? "block" : "none";
@@ -1632,15 +1904,38 @@ async function main() {
     state.glyphs = await fetchJSON("glyphs.json");
     state.index = await fetchJSON("data/index.json");
     state.qr = await fetchJSON("qr.json");
+    state.scb = await fetchJSON("data/scb.json");
   } catch (err) {
     $("error").textContent = "Kunde inte läsa data. Kör via en webbserver " +
       "(t.ex. python -m http.server i site/) — file:// fungerar inte. " + err;
     return;
   }
+  // beräknade mått (revision 6): spotkostnad och totalpris hushåll
+  {
+    const ms = state.index.measures;
+    ms.cost = {
+      label: "Spotkostnad (pris × förbrukning)", engr: "SPOTKOSTNAD",
+      unit: "MSEK/h",
+      years: ms.price.years.filter(y => ms.consumption.years.includes(y)),
+      scalePerUnit: 0.5, scaleLabel: "1 mm = 2 MSEK/h", computed: "cost",
+    };
+    ms.totalpris = {
+      label: "Totalpris hushåll (modell)", engr: "TOTALPRIS",
+      unit: "öre/kWh",
+      years: ms.price.years.filter(y => y >= 2015),
+      scalePerUnit: 0.1, scaleLabel: "1 mm = 10 öre/kWh", computed: "totalpris",
+    };
+    ms.price.engr = "SPOTPRIS";
+    ms.consumption.engr = "ELFÖRBRUKNING";
+    ms.production.engr = "ELPRODUKTION";
+  }
   const mSel = $("measure");
   mSel.innerHTML = Object.entries(state.index.measures)
     .map(([k, m]) => `<option value="${k}">${m.label}</option>`).join("");
   mSel.value = state.measure;
+  $("pricecat").innerHTML = Object.entries(state.scb.categories)
+    .map(([k, t]) => `<option value="${k}">${t}</option>`).join("");
+  $("pricecat").value = state.priceCategory;
   const zoneOpts = state.index.zones
     .map(z => `<option value="${z}">${zoneLabel(z)}</option>`).join("");
   $("zone").innerHTML = zoneOpts;

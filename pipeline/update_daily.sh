@@ -15,4 +15,5 @@ echo "=== $(date '+%Y-%m-%d %H:%M') uppdatering börjar ==="
 "$PY" pipeline/fetch_cache.py --token-dir data_src --cache-dir data_src/entsoe \
       --mode update --recent-months 2 --sleep 0.3
 "$PY" pipeline/build_data.py
+"$PY" pipeline/fetch_scb.py   # KPI + elpriskomponenter (läser price_*.json → sist)
 echo "=== klar ==="

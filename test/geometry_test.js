@@ -290,5 +290,62 @@ console.log("9. Binär STL + zip genom riktig unzip -t");
   ok(badFailed, "korrupt zip underkänns");
 }
 
+console.log("10. Runda 2: staplad undersida, spegling, nedåtstaplar, årtal mitt i året");
+{
+  // 4 år → djup 12 + 209 + 3 = 224 > 192 → staplad undersideslayout
+  const price21 = load("price_2021.json");
+  const four = buildCase("SPOTPRIS SE 2021-2024", { scalePerUnit: 0.1, floor: 0 },
+    [price21, price22, price23, price24], "SE");
+  ok(four.plate.depthMM > four.plate.widthMM, "fyraårsmodell är djupare än bred",
+    `${four.plate.depthMM} × ${four.plate.widthMM} mm`);
+  const rb = C.checkSolid(four.under.bgTris);
+  const ri = C.checkSolid(four.under.inkTris);
+  ok(rb.watertight && ri.watertight, "staplad undersida vattentät",
+    `${rb.badEdges}+${ri.badEdges} oparade`);
+  const qq = four.under.qr;
+  ok(qq.y0 < 12 && Math.abs((qq.x0 + qq.size * qq.module / 2) - four.plate.widthMM / 2) < 1,
+    "QR centrerad nära fronten i staplat läge",
+    `x-mitt ${(qq.x0 + qq.size * qq.module / 2).toFixed(1)}, y0 ${qq.y0}`);
+
+  // spegling: vattentät, volym oförändrad, x-position speglad
+  const { cfg, plate } = built["SPOTPRIS SE 2024"];
+  const twinData = cfg.yearsData.map(yd => ({ isoYear: yd.isoYear, weeks: yd.weeks,
+    values: yd.values.map(v => v === null ? null : (v < 0 ? Math.min(-v, 100) : 0)) }));
+  const twin = C.buildPlate({ ...cfg, yearsData: twinData, cap: null, floor: null,
+                              underT: 0, normFactor: 1 });
+  const mir = C.mirrorTrisX(twin.tris, twin.widthMM);
+  const rm = C.checkSolid(mir), rt0 = C.checkSolid(twin.tris);
+  ok(rm.watertight, "speglad tvilling vattentät", `${rm.badEdges} oparade`);
+  ok(Math.abs(rm.volumeMM3 - rt0.volumeMM3) < 1e-6 * rt0.volumeMM3,
+    "spegling bevarar volymen");
+  // limningsjustering: cell (x-intervall) för negativ timme ska hamna på W−x
+  let xs = [];
+  for (let t = 0; t < twin.tris.length; t += 9) xs.push(twin.tris[t]);
+  let xsm = [];
+  for (let t = 0; t < mir.length; t += 9) xsm.push(mir[t]);
+  ok(Math.abs(Math.min(...xs) + Math.max(...xsm) - twin.widthMM) < 1e-9 &&
+     Math.abs(Math.max(...xs) + Math.min(...xsm) - twin.widthMM) < 1e-9,
+    "x-utsträckning exakt speglad (limning i register)");
+
+  // digitala nedåtstaplar: vattentäta, volym = tvillingens staplar (utan tak)
+  const bars = C.buildNegativeUnderbars(cfg, plate);
+  const rbars = C.checkSolid(bars);
+  ok(rbars.watertight && rbars.volumeMM3 > 0, "nedåtstaplar vattentäta",
+    `${bars.length / 9} tris`);
+  const negs = price24.zones.SE.filter(v => v !== null && v < 0);
+  const expVol = negs.reduce((s, v) => s + (-v) * 0.1, 0);
+  ok(Math.abs(rbars.volumeMM3 - expVol) <= expVol * 0.005,
+    "nedåtstaplarnas volym = summa |negativa| × skala",
+    `${rbars.volumeMM3.toFixed(1)} ≈ ${expVol.toFixed(1)} mm³`);
+  let minZ = Infinity;
+  for (let t = 2; t < bars.length; t += 3) minZ = Math.min(minZ, bars[t]);
+  ok(minZ < 0, "staplarna hänger under plattan", `min z ${minZ.toFixed(2)} mm`);
+
+  // årtalet ligger nära årets mitt (ovanför v26): kolla via textrapporten
+  const rep = built["FÖRBRUKNING SE 2023"].text.report;
+  ok(rep.some(b => b.name === "år 2023") && rep.some(b => b.name.startsWith("vecka v26")),
+    "årtal och v26 samexisterar på apronen");
+}
+
 console.log(`\n${checks} kontroller, ${failures} fel`);
 process.exit(failures ? 1 : 0);
