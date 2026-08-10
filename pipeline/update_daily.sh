@@ -18,4 +18,16 @@ echo "=== $(date '+%Y-%m-%d %H:%M') uppdatering börjar ==="
 "$PY" pipeline/fetch_fx.py          # ECB månadskurs SEK/EUR
 "$PY" pipeline/build_data.py
 "$PY" pipeline/fetch_scb.py   # KPI + elpriskomponenter (läser price_*.json → sist)
+
+# --deploy: spegla den ombyggda datan till hedin.it/el3d (SFTP, shell avstängt)
+if [ "${1:-}" = "--deploy" ]; then
+  lftp -e "
+    set sftp:connect-program 'ssh -a -x -i ~/.ssh/hedin_deploy -o IdentitiesOnly=yes -o BatchMode=yes';
+    open sftp://bjornh:@hedin.it:22;
+    mirror -R --only-newer site/data public_html/el3d/data;
+    bye"
+  curl -sf https://hedin.it/el3d/data/index.json | head -c 80 > /dev/null \
+    && echo "deploy verifierad (index.json svarar)" \
+    || { echo "DEPLOY-FEL: index.json svarar inte"; exit 1; }
+fi
 echo "=== klar ==="

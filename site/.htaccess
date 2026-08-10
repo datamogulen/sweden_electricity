@@ -1,0 +1,8 @@
+# el3d — appen uppdateras löpande: tvinga omvalidering (G13-läxan:
+# en cachad app.js kostade en timmes felsökning; 304:or är billiga).
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|json)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
+DirectoryIndex index.html

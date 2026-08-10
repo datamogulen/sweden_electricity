@@ -29,8 +29,9 @@ rapporterade ENTSO-E bara vindkraft per elområde, så de åren erbjuds inte).
 Pågående ISO-år byggs som partiellt (`partial` + `dataThrough`).
 
 ```bash
-./pipeline/update_daily.sh         # mgrey + ENTSO-E + ombyggda års-JSON
-# cron: 5 14 * * * cd ~/Development/sweden_electricity && ./pipeline/update_daily.sh >> data_src/update.log 2>&1
+./pipeline/update_daily.sh           # mgrey + ENTSO-E + länder + FX + ombyggda års-JSON
+./pipeline/update_daily.sh --deploy  # …och spegla site/data → hedin.it/el3d (lftp)
+# cron: 5 14 * * * cd ~/Development/sweden_electricity && ./pipeline/update_daily.sh --deploy >> data_src/update.log 2>&1
 ```
 
 Delsteg: `update_spot.py` (mgrey.se/espot — Vattenfalls gamla API är dött,
@@ -97,6 +98,16 @@ Avsteg (zoom, volymnormering, pristak, sockel) graveras på objektet.
 
 ## Deploy (hedin.it)
 
-Inte deployad ännu. När det sker: `site/` → hedin.it med `.htaccess`
-`Cache-Control: no-cache, must-revalidate` för HTML från dag ett;
-verifiera live med `curl`; uppdatera backup-spegel.
+**Live på <https://hedin.it/el3d/>** (2026-08-10). Metod: lftp-spegling över
+SFTP (shell avstängt på kontot), nyckel `~/.ssh/hedin_deploy`:
+
+```bash
+lftp -e "set sftp:connect-program 'ssh -a -x -i ~/.ssh/hedin_deploy -o IdentitiesOnly=yes -o BatchMode=yes'; \
+  open sftp://bjornh:@hedin.it:22; mirror -R site public_html/el3d; bye"
+```
+
+`site/.htaccess` sätter `Cache-Control: no-cache, must-revalidate` för
+html/js/json (G13-läxan). QR-redirecten `r/EL3D[/KOD]` ligger i den centrala
+`r/`-tabellen (deployas från hedin_cleanup-repot). Daglig datauppdatering:
+cronraden ovan med `--deploy`. Efter appändringar: full spegling + uppdatera
+backup-spegeln i `~/Development/hedin.it_backup/public_html/el3d/`.
