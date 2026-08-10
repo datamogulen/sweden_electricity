@@ -28,11 +28,31 @@ förbrukning 2015 → idag, produktion 2022 → idag (före ~nov 2021
 rapporterade ENTSO-E bara vindkraft per elområde, så de åren erbjuds inte).
 Pågående ISO-år byggs som partiellt (`partial` + `dataThrough`).
 
-```bash
-./pipeline/update_daily.sh           # mgrey + ENTSO-E + länder + FX + ombyggda års-JSON
-./pipeline/update_daily.sh --deploy  # …och spegla site/data → hedin.it/el3d (lftp)
-# cron: 5 14 * * * cd ~/Development/sweden_electricity && ./pipeline/update_daily.sh --deploy >> data_src/update.log 2>&1
+**Driften går PÅ hedin.it** (panel-cron; SSH-shell är avstängt men cronjobb
+kör Python — samma mönster som den gamla entsoe-cronen). Serverlayout:
+`~/el3d/pipeline/` + `~/el3d/data_src/` (utanför public_html), bygget
+skriver direkt till `public_html/el3d/data/` via `EL3D_OUT`.
+
 ```
+# cPanel-cron på hedin.it:
+5 14 * * * cd $HOME/el3d && python3 pipeline/update_daily_server.py >> update.log 2>&1
+```
+
+Manuell körning/verifiering utan shell: nycklad trigger
+`https://hedin.it/el3d/update.php?key=…` (start i bakgrunden) och
+`…&log=1` (visa loggen). Nyckeln ligger i `~/el3d/trigger_key.txt` på
+servern — aldrig i git.
+
+Lokalt (utveckling):
+
+```bash
+./pipeline/update_daily.sh           # samma steg mot lokala data_src/ + site/data
+./pipeline/update_daily.sh --deploy  # …och spegla site/data → hedin.it (lftp)
+```
+
+Obs: server och lokal kopia uppdaterar var sin `data_src` oberoende
+(mgrey/ENTSO-E-hämtningarna är idempotenta); servern är kanonisk för
+livedata.
 
 Delsteg: `update_spot.py` (mgrey.se/espot — Vattenfalls gamla API är dött,
 403), `fetch_cache.py` (ENTSO-E, token i `data_src/entsoe_token.txt` — får

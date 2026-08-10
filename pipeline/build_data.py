@@ -24,8 +24,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import os
+
 HERE = Path(__file__).resolve().parent
-OUT = HERE.parent / "site" / "data"
+# EL3D_OUT: på servern skrivs JSON direkt till public_html/el3d/data
+OUT = Path(os.environ.get("EL3D_OUT", HERE.parent / "site" / "data"))
 DB = HERE.parent / "data_src" / "spotprices.sqlite"
 CACHE = HERE.parent / "data_src" / "entsoe" / "cache"
 TZ = ZoneInfo("Europe/Stockholm")

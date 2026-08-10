@@ -24,9 +24,12 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
+import os
+
 HERE = Path(__file__).resolve().parent
-OUT = HERE.parent / "site" / "data" / "scb.json"
-DATA = HERE.parent / "site" / "data"
+# EL3D_OUT: på servern läses/skrivs public_html/el3d/data direkt
+DATA = Path(os.environ.get("EL3D_OUT", HERE.parent / "site" / "data"))
+OUT = DATA / "scb.json"
 API = "https://api.scb.se/OV0104/v1/doris/sv/ssd/START"
 
 KPI_TABLE = f"{API}/PR/PR0101/PR0101A/KPI2020M"
