@@ -257,10 +257,23 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       till öre/kWh med ECB:s månadsmedelkurs (Sverige: Nord Pool via mgrey
       med dagskurs — samma underliggande pris, grövre kursupplösning,
       deklarerat). KPI-justeringen använder svensk KPI även för länderna:
-      allt uttrycks i svenskt penningvärde. Totalpris hushåll finns bara
-      för Sverige (SCB-komponenter). Volymnormering fungerar över
-      landsgränser — t.ex. Finlands förbrukning normerad mot Sveriges
-      jämför dygns- och säsongsform oberoende av landstorlek.</p>
+      allt uttrycks i svenskt penningvärde. Totalpris hushåll finns även för
+      länderna: komponenter ur Eurostat nrg_pc_204 (samma förbrukningsband
+      DA–DE som SCB, halvårsvis, tre skattenivåer), momsfaktor ur
+      förhållandet inkl./exkl. moms, kalibrerat mot respektive lands
+      spotmedel med samma modellstruktur som Sveriges (avvikelse mot
+      Eurostats totaler &lt; 0,1 öre). DE–LU använder tyska konsumentpriser.
+      Volymnormering fungerar över landsgränser — t.ex. Finlands
+      förbrukning normerad mot Sveriges jämför dygns- och säsongsform
+      oberoende av landstorlek.</p>
+      <h2>Outlier-screening (revision 8)</h2>
+      <p>Förbrukningsdata screenas automatiskt: värden över 2,5× medianen
+      för samma timme ±7 dygn sätts som saknade och listas i en rapport
+      (57 timmar i sju kända ENTSO-E-incidenter, bl.a. 2026-03-28 och
+      2022-02-10, där SE1/SE2 flerfaldigas medan SE3/SE4 sjunker —
+      zonallokeringen skramlad hos källan). Verkliga vintertoppar (26 GW)
+      passerar. Priser screenas inte: pristoppar är verkliga (D3).
+      SE-summan nollas i kontaminerade timmar.</p>
       <h2>Datadeklarationer</h2>
       <ul id="declarations"></ul>
       <h2>Designgrammatik (kort)</h2>

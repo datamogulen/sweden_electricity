@@ -1236,31 +1236,37 @@ async function seriesFor(measure, zone, years) {
       }
       yearsData.push({ isoYear: y, weeks: p.weeks, values });
     } else if (info.computed === "totalpris") {
-      // (spot + påslag + nät + elskatt) × 1,25 — komponenter per halvår & kategori
+      // (spot + påslag + fasta komponenter) × momsfaktor — komponenter per
+      // halvår & kategori; SE ur SCB, länderna ur Eurostat (revision 8)
       const p = await loadYear("price", y);
       const cat = state.priceCategory;
       const start = isoWeek1Monday(y);
-      const halvar = state.scb.halvar;
+      const halvar = isCountry(zone) ? state.scb.halvarC[zone] : state.scb.halvar;
+      if (!halvar) throw new Error(`Totalpris saknar komponenter för ${zoneLabel(zone)}`);
       const keys = Object.keys(halvar).sort();
       const n = p.weeks * 168;
       const values = new Array(n).fill(null);
+      const zoneSeries = p.zones[zone] || [];
       for (let i = 0; i < n; i++) {
-        const pv = p.zones[zone][i];
+        const pv = zoneSeries[i];
         if (pv === null || pv === undefined) continue;
         const d = new Date(start);
         d.setUTCDate(d.getUTCDate() + Math.floor(i / 24));
         const hk = `${d.getUTCFullYear()}H${d.getUTCMonth() < 6 ? 1 : 2}`;
         let comp = halvar[hk] && halvar[hk][cat];
-        if (!comp || comp.paslag === null) {
+        if (!comp || comp.paslag === null || comp.paslag === undefined) {
           // senaste kända halvår — extrapolering, deklareras
+          comp = null;
           for (let k = keys.length - 1; k >= 0; k--) {
-            const c2 = halvar[keys[k]][cat];
-            if (keys[k] <= hk && c2 && c2.paslag !== null) { comp = c2; break; }
+            const c2 = halvar[keys[k]] && halvar[keys[k]][cat];
+            if (keys[k] <= hk && c2 && c2.paslag !== null && c2.paslag !== undefined) {
+              comp = c2; break;
+            }
           }
           notes.extrapolatedHours++;
         }
-        if (comp && comp.paslag !== null) {
-          values[i] = (pv + comp.paslag + comp.nat + comp.skatt) * state.scb.momsFactor;
+        if (comp) {
+          values[i] = (pv + comp.paslag + comp.fasta) * comp.moms;
         }
       }
       yearsData.push({ isoYear: y, weeks: p.weeks, values });
@@ -1314,10 +1320,9 @@ function yearsFor(measure, zone) {
 // ------------------------------------------------------------- bygga modellen
 async function rebuild() {
   const info = measureInfo(state.measure);
-  if (state.measure === "totalpris" && isCountry(state.zone)) {
-    throw new Error("Totalpris hushåll bygger på SCB:s svenska komponenter och " +
-      "finns bara för Sverige/SE1–SE4. Välj spotpris eller spotkostnad för " +
-      zoneLabel(state.zone) + ".");
+  if (state.measure === "totalpris" && isCountry(state.zone) &&
+      !(state.scb.halvarC && state.scb.halvarC[state.zone])) {
+    throw new Error(`Totalpris saknar priskomponenter för ${zoneLabel(state.zone)}.`);
   }
   const yAvail = yearsFor(state.measure, state.zone);
   if (!yAvail.length) {
@@ -1402,10 +1407,14 @@ async function rebuild() {
     ? `FASTA PRISER: KPI-JUSTERAT TILL ${state.scb.kpi.ref}`
     : "LÖPANDE (NOMINELLA) PRISER");
   if (state.measure === "totalpris") {
-    cfg.underLines.push("MODELL: SPOT + PÅSLAG + NÄT + SKATT, ×1,25 MOMS (SCB)");
+    cfg.underLines.push(isCountry(state.zone)
+      ? "MODELL: (SPOT + PÅSLAG + SKATTER) × MOMS (EUROSTAT)"
+      : "MODELL: (SPOT + PÅSLAG + NÄT + SKATT) × 1,25 MOMS (SCB)");
   }
   cfg.underLines.push(
-    state.measure === "totalpris" ? "KÄLLA: NORD POOL / SCB" : "KÄLLA: NORD POOL / ENTSO-E",
+    state.measure === "totalpris"
+      ? (isCountry(state.zone) ? "KÄLLA: ENTSO-E / EUROSTAT / ECB" : "KÄLLA: NORD POOL / SCB")
+      : "KÄLLA: NORD POOL / ENTSO-E",
     "HEDIN.IT/EL3D");
   const under = buildUnderside(cfg, state.glyphs, state.qr, plate);
 
@@ -1604,7 +1613,8 @@ function updateReadout(plate, text, cfg) {
       : `Löpande (nominella) priser`);
   }
   if (state.measure === "totalpris") {
-    lines.push(`Modell: (spot + påslag + nät + elskatt) × 1,25 moms — SCB-kalibrerad; ` +
+    const src = isCountry(state.zone) ? "Eurostat-kalibrerad" : "SCB-kalibrerad";
+    lines.push(`Modell: (spot + påslag + fasta komponenter) × momsfaktor — ${src}; ` +
       `typkund ${state.scb.categories[state.priceCategory]}`);
     if (state.notes && state.notes.extrapolatedHours) {
       lines.push(`${state.notes.extrapolatedHours.toLocaleString("sv-SE")} timmar använder ` +
@@ -1687,12 +1697,18 @@ function foljesedel(plate, text, cfg) {
   }
   if (state.measure === "totalpris") {
     L.push(`  TOTALPRIS (MODELL), typkund ${state.scb.categories[state.priceCategory]}:`);
-    L.push("  timpris = (spot + påslag + nätpris + elskatt) × 1,25 moms, där");
-    L.push("  påslaget per halvår kalibrerats så att halvårssnittet träffar SCB:s");
-    L.push("  redovisade hushållspriser (EN0301). BRASKLAPPAR: rikssnitt i öre/kWh");
-    L.push("  (fasta avgifter utslagna); timprofilen är spotens — fastprisavtal");
-    L.push("  och timvis nätdebitering fångas inte; zonmodell = zonens spot +");
-    L.push("  nationella komponenter.");
+    L.push("  timpris = (spot + påslag + fasta komponenter) × momsfaktor, där");
+    if (isCountry(state.zone)) {
+      L.push("  komponenterna kommer ur Eurostat nrg_pc_204 (halvår, EUR→öre via");
+      L.push("  ECB-halvårskurs) och påslaget kalibrerats mot landets spotmedel.");
+      if (state.zone === "DELU") L.push("  DE–LU använder tyska konsumentpriser.");
+    } else {
+      L.push("  påslaget per halvår kalibrerats så att halvårssnittet träffar SCB:s");
+      L.push("  redovisade hushållspriser (EN0301).");
+    }
+    L.push("  BRASKLAPPAR: rikssnitt i öre/kWh (fasta avgifter utslagna);");
+    L.push("  timprofilen är spotens — fastprisavtal och timvis nätdebitering");
+    L.push("  fångas inte; zonmodell = zonens spot + nationella komponenter.");
     if (state.notes && state.notes.extrapolatedHours) {
       L.push(`  ${state.notes.extrapolatedHours} timmar använder senast kända ` +
         "SCB-komponenter (extrapolerat).");

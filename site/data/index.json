@@ -90,7 +90,15 @@
     ],
     "FR": [
      2015,
-     2016
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024
     ],
     "SE": [
      2015,
@@ -140,11 +148,35 @@
    "zoneYears": {
     "FI": [
      2015,
-     2016
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024
     ],
     "FR": [
      2015,
-     2016
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024
+    ],
+    "DELU": [
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024
     ],
     "SE1": [
      2022,
@@ -331,7 +363,15 @@
     ],
     "FR": [
      2015,
-     2016
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024
     ],
     "DELU": [
      2019,
@@ -374,7 +414,8 @@
   "time": "Svensk lokaltid; DST-vårens timme saknas, höstens dubbeltimme är medelvärdesbildad (spotpris: första timmen).",
   "weeks": "ISO-veckor (mån–sön); ett år = ISO-år.",
   "sources": "Spotpris Sverige: Nord Pool via mgrey.se/espot (öre/kWh, dagskurs). Länder (FI, DE–LU, FR): ENTSO-E dagen-före i EUR/MWh × ECB:s månadsmedelkurs SEK/EUR. Förbrukning/produktion: ENTSO-E Transparency; produktion = summa av kraftslag (SE komplett 2022+, FI/FR 2015+, DE–LU 2019+ — budzonen DE-LU fanns inte före okt 2018).",
+  "outliers": "Förbrukningsdata screenas automatiskt: värden över 2,5× medianen för samma timme ±7 dygn sätts som saknade (kända ENTSO-E-fel där SE1/SE2 flerfaldigas i timmar; lista i data_src/outlier_report.txt). Priser screenas inte — pristoppar är verkliga.",
   "countries": "Ländernas priser i öre/kWh (svensk valuta) för kommensurabilitet; KPI-justering använder svensk KPI även för länderna (svenskt penningvärde, deklarerat). Totalpris hushåll finns bara för Sverige (SCB)."
  },
- "built": "2026-08-10 09:50 UTC"
+ "built": "2026-08-10 10:26 UTC"
 }

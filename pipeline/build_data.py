@@ -233,6 +233,42 @@ def coverage(series):
     return sum(1 for v in series if v is not None) / len(series)
 
 
+def screen_outliers(files, measure):
+    """Outlier-screening av förbrukning (revision 8): värden > 2,5× medianen
+    för samma timme ±7 dygn sätts som saknade och listas i rapporten.
+    Verifierat mot kända ENTSO-E-fel (SE1/SE2 2018-04-16, 2018-09-11,
+    2019-01-15, 2019-06-03, 2022-02-10, 2026-03-28: zonallokeringen skramlad,
+    SE2 ×4 i timmar). Priser screenas INTE (extremer är verkliga, D3);
+    produktion screenas inte (vind varierar legitimt flerfaldigt)."""
+    import statistics
+    report = []
+    for y, zs in sorted(files.items()):
+        zones = [z for z in zs if z != "SE"]
+        killed_slots = set()
+        for z in zones:
+            s = zs[z]
+            n = len(s)
+            for i, v in enumerate(s):
+                if v is None or v <= 0:
+                    continue
+                ref = [s[j] for k in range(-7, 8) if k
+                       for j in [i + k * 24] if 0 <= j < n and s[j] is not None]
+                if len(ref) >= 8:
+                    med = statistics.median(ref)
+                    if med > 0 and v > 2.5 * med:
+                        start = iso_year_start(y)
+                        d = start + timedelta(days=i // 24)
+                        report.append(f"{measure} {z} {d} kl {i % 24:02d}: "
+                                      f"{v} MW (median ±7 dygn: {med:.0f})")
+                        s[i] = None
+                        killed_slots.add(i)
+        # SE-summan är kontaminerad i samma timmar
+        if "SE" in zs:
+            for i in killed_slots:
+                zs["SE"][i] = None
+    return report
+
+
 def zone_years(files, min_cov=0.9):
     """{zon: [år med ≥ min_cov täckning]} — pågående år: > 500 datatimmar."""
     zy = {}
@@ -375,6 +411,10 @@ def main():
             for z, s in zs.items():
                 price_files[y][z] = s
     cons_files = fold_entsoe(cons, CONS_YEARS)
+    outliers = screen_outliers(cons_files, "förbrukning")
+    rp = HERE.parent / "data_src" / "outlier_report.txt"
+    rp.write_text("\n".join(outliers) + "\n" if outliers else "inga\n")
+    print(f"Outlier-screening: {len(outliers)} timmar nollade (→ {rp.name})")
     prod_files = fold_entsoe(prod, PROD_YEARS)
     # Sveriges produktion före 2022 var bara vindkraft i ENTSO-E (full täckning
     # men fel totaler) — nollas hårt så zonåren utesluter den (SPEC §4)
@@ -424,10 +464,17 @@ def main():
                        "produktion: ENTSO-E Transparency; produktion = summa av "
                        "kraftslag (SE komplett 2022+, FI/FR 2015+, DE–LU 2019+ — "
                        "budzonen DE-LU fanns inte före okt 2018).",
+            "outliers": "Förbrukningsdata screenas automatiskt: värden över "
+                        "2,5× medianen för samma timme ±7 dygn sätts som saknade "
+                        "(kända ENTSO-E-fel där SE1/SE2 flerfaldigas i timmar; "
+                        "lista i data_src/outlier_report.txt). Priser screenas "
+                        "inte — pristoppar är verkliga.",
             "countries": "Ländernas priser i öre/kWh (svensk valuta) för "
                          "kommensurabilitet; KPI-justering använder svensk KPI "
                          "även för länderna (svenskt penningvärde, deklarerat). "
-                         "Totalpris hushåll finns bara för Sverige (SCB).",
+                         "Totalpris hushåll: Sverige ur SCB EN0301, länderna ur "
+                         "Eurostat nrg_pc_204 (samma förbrukningsband; DE–LU "
+                         "använder tyska konsumentpriser).",
         },
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }

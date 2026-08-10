@@ -391,5 +391,51 @@ console.log("11. Runda 3: årsmedel + länder (FI) + valutakonvertering");
   }
 }
 
+console.log("12. Runda 4: outlier-screening + totalpris för länderna");
+{
+  // kända ENTSO-E-fel ska vara nollade: SE2 lör 2026-03-28 (dag 87, ISO-v13 lör)
+  const c26 = load("consumption_2026.json");
+  // 2026-03-28 = lördag i ISO-vecka 13 → slot (13-1)*168 + 5*24 + h
+  const badSlots = [12, 14, 16, 19].map(h => (13 - 1) * 168 + 5 * 24 + h);
+  ok(badSlots.every(i => c26.zones.SE2[i] === null),
+    "SE2 2026-03-28: skramlade timmar nollade");
+  ok(badSlots.every(i => c26.zones.SE[i] === null),
+    "SE-summan nollad i samma timmar (kontaminerad)");
+  const c22 = load("consumption_2022.json");
+  const feb10 = (6 - 1) * 168 + 3 * 24; // 2022-02-10 = torsdag ISO-v6
+  const feb10max = Math.max(...c22.zones.SE2.slice(feb10, feb10 + 24).filter(v => v !== null));
+  ok(feb10max < 5000, "SE2 2022-02-10: 8477-felet borta", `max nu ${feb10max} MW`);
+  // friska toppar överlever: SE 2024 max fortfarande > 24 GW
+  const c24 = load("consumption_2024.json");
+  const seMax = Math.max(...c24.zones.SE.filter(v => v !== null));
+  ok(seMax > 24000, "verkliga vintertoppar överlever screeningen", `${seMax} MW`);
+
+  // totalpris för Finland: komponenter finns och modellen kalibrerar
+  const scb = JSON.parse(fs.readFileSync(path.join(ROOT, "site", "data", "scb.json"), "utf8"));
+  ok(scb.halvarC && scb.halvarC.FI && scb.halvarC.DELU && scb.halvarC.FR,
+    "Eurostat-komponenter för FI/DELU/FR finns");
+  const e = scb.halvarC.FI["2023H2"] && scb.halvarC.FI["2023H2"].DC;
+  ok(e && e.moms > 1.05 && e.moms < 1.35 && e.fasta > 0,
+    "FI 2023H2 DC: momsfaktor och fasta komponenter rimliga",
+    e ? `moms ${e.moms}, fasta ${e.fasta} öre` : "saknas");
+  // kalibrering: (spotmedel + påslag + fasta) × moms ≈ Eurostat-total
+  if (e && e.paslag !== null) {
+    const p23 = load("price_2023.json");
+    const start = new Date(Date.UTC(2023, 0, 2)); // ISO 2023 v1 mån = 2 jan
+    const vals = [];
+    for (let i = 0; i < p23.weeks * 168; i++) {
+      const v = p23.zones.FI[i];
+      if (v === null) continue;
+      const d = new Date(start); d.setUTCDate(d.getUTCDate() + Math.floor(i / 24));
+      if (d.getUTCFullYear() === 2023 && d.getUTCMonth() >= 6) vals.push(v);
+    }
+    const sm = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const model = (sm + e.paslag + e.fasta) * e.moms;
+    ok(Math.abs(model - e.esTotalOre) < 2,
+      "FI-modellen träffar Eurostat-totalen",
+      `${model.toFixed(1)} ≈ ${e.esTotalOre} öre/kWh`);
+  }
+}
+
 console.log(`\n${checks} kontroller, ${failures} fel`);
 process.exit(failures ? 1 : 0);

@@ -54,6 +54,26 @@ Aggregeringen slätar timtopparna (artikelns D6-exempel) och graveras
 därför på objektet (GLID 24 H, DYGNSMEDEL, …); appliceras även på
 normeringsreferensen och tvillingen. Saknade timmar förblir saknade.
 
+## Revision 8 — outlier-screening + totalpris för länderna (2026-08-10)
+
+1. **Outlier-screening av förbrukningsdata** (beställaren upptäckte SE2
+   lör 2026-03-28 kl 19 = 6 617 MW): systematisk skanning fann **sju
+   ENTSO-E-incidenter** med samma signatur — SE1/SE2 flerfaldigas i
+   timmar–dygn medan SE3/SE4 sjunker (zonallokering skramlad hos källan):
+   2018-04-16, 2018-09-11, 2019-01-15, 2019-06-03, 2022-02-10 (SE2
+   "max" 8 477 MW!), 2026-03-28. Regel: värde > 2,5× medianen för samma
+   timme ±7 dygn → sätts som saknad; SE-summan nollas i samma timmar;
+   allt listas i `data_src/outlier_report.txt` (57 timmar). Verkliga
+   vintertoppar (26 GW nationellt) passerar. Priser screenas INTE
+   (pristoppar är verkliga, D3); produktion screenas inte (vind varierar
+   legitimt flerfaldigt) utan vaktas av TWh-intervallen.
+2. **Totalpris hushåll även för länderna**: Eurostat nrg_pc_204 har samma
+   förbrukningsband (DA–DE) som SCB med tre skattenivåer; momsfaktorn
+   räknas ur inkl./exkl. moms och modellen (spot + påslag + skatter) ×
+   momsfaktor kalibreras per halvår mot landets spotmedel — träffar
+   Eurostats totaler inom 0,1 öre (byggspärr vid > 2 öre). DE–LU använder
+   tyska konsumentpriser (deklarerat). EUR→öre via ECB-halvårskurs.
+
 ## Revision 7 — länder + årsmedel (2026-08-10, beställarens begäran)
 
 1. **Nya områden: Finland (2015–), Tyskland DE–LU (2019–), Frankrike
