@@ -16,7 +16,7 @@ import numpy as np
 import qrcode
 import cv2
 
-URL = "HTTPS://HEDIN.IT/EL3D"   # 21 tecken -> QR v1 (21x21) med ECC L, marginal 4
+URL = "HTTPS://HEDIN.IT/R/EL3D"  # 23 tecken -> QR v1, ompekbar via r/-tabellen
 OUT = Path(__file__).resolve().parent.parent / "site" / "qr.json"
 
 

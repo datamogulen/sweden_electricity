@@ -74,8 +74,12 @@ av): `*_modell.stl` (datafärg), `*_text.stl` (toppkontrast),
 `*_negativ_modell.stl` (tvillingen) när urvalet har negativa priser, och
 `FOLJESEDEL.txt` med exportens hela tillstånd. Exporten vägrar om någon
 solid inte är vattentät eller text hamnar under 2,2 mm versalhöjd.
-Undersidans QR: `HTTPS://HEDIN.IT/EL3D` — vid deploy behövs en
-skiftlägesokänslig redirect `/EL3D` → appen.
+Undersidans QR: `HTTPS://HEDIN.IT/R/EL3D` (23 tecken = QR v1; sökvägsform
+i stället för `?p=` som hade spräckt versionsgränsen) — går via sajtens
+befintliga centrala redirect-tabell `r/index.php` (en rad per projekt,
+ompekbar utan omtryck; versioneras i hedin_cleanup-repot, som nu även har
+sökvägsformen + `r/.htaccess`). Appen själv deployas på `hedin.it/el3d/`
+— den läsbara undersidestexten pekar dit direkt.
 
 ## Deklarerade skalor (familjeinvarianter)
 
