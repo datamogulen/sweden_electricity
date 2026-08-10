@@ -54,6 +54,31 @@ Aggregeringen slätar timtopparna (artikelns D6-exempel) och graveras
 därför på objektet (GLID 24 H, DYGNSMEDEL, …); appliceras även på
 normeringsreferensen och tvillingen. Saknade timmar förblir saknade.
 
+## Revision 7 — länder + årsmedel (2026-08-10, beställarens begäran)
+
+1. **Nya områden: Finland (2015–), Tyskland DE–LU (2019–), Frankrike
+   (2015–)** med samma tre grundmått (spotpris, förbrukning, produktion)
+   och spotkostnad; samma familjeskalor (O2 över landsgränser — Finlands
+   förbrukning kan volymnormeras mot Sveriges för ren formjämförelse).
+   Tyskland från 2019: budzonen DE-LU föddes okt 2018 (dessförinnan
+   DE-AT-LU) — hellre kort ärlig serie än blandade zoner.
+2. **Valuta:** ländernas dagen-före-priser (ENTSO-E, EUR/MWh) räknas om
+   till öre/kWh med ECB:s månadsmedelkurs; Sverige behåller mgreys
+   dagskursserie. Samma underliggande pris, olika kursupplösning —
+   deklarerat. KPI-justeringen använder svensk KPI även för länderna
+   (allt i svenskt penningvärde, deklarerat).
+3. **Zonberoende årslistor:** varje mått bär `zoneYears` (täckningsstyrt,
+   ≥ 90 %); UI:ts årsval följer området. Svensk produktion före 2022
+   nollas hårt (bara vindkraft i ENTSO-E — full täckning, fel totaler;
+   spärren som fångade det behölls).
+4. **Totalpris är Sverige-exklusivt** (SCB-komponenter) — tydlig spärr
+   med förklaring vid landsval.
+5. **Årsmedel** som femte upplösningsval (graveras ÅRSMEDEL) — flerårs-
+   staplar blir rena årsjämförelser i kalenderreliefens form.
+6. Ny hämtare `fetch_countries.py` (FR pris/last + produktion FI/DELU/FR,
+   resumebar, senaste 2 månaderna alltid om) + `fetch_fx.py` (ECB) —
+   båda i dagliga uppdateringen.
+
 ## Revision 6 — granskningsrunda 2 (2026-08-10, beställarens begäran)
 
 1. **Undersidans layout är djupberoende:** modeller djupare än breda (långa

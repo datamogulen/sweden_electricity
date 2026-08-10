@@ -347,5 +347,49 @@ console.log("10. Runda 2: staplad undersida, spegling, nedåtstaplar, årtal mit
     "årtal och v26 samexisterar på apronen");
 }
 
+console.log("11. Runda 3: årsmedel + länder (FI) + valutakonvertering");
+{
+  // årsmedel: konstant inom året, olika mellan åren
+  const two = [
+    { isoYear: 2023, weeks: 52, values: new Array(52 * 168).fill(10) },
+    { isoYear: 2024, weeks: 52, values: new Array(52 * 168).fill(30) },
+  ];
+  const yr = C.transformSeries(two, "year");
+  ok(yr[0].values[0] === 10 && yr[0].values[5000] === 10 &&
+     yr[1].values[0] === 30 && yr[1].values[8000] === 30,
+    "årsmedel konstant per år, olika mellan år");
+
+  // Finland: modell + text + undersida bygger vattentätt
+  const p23 = load("price_2023.json");
+  ok(Array.isArray(p23.zones.FI), "price_2023 har FI-zon");
+  const fi = buildCase("FINLAND SPOTPRIS 2023", { scalePerUnit: 0.1, floor: 0 },
+    [p23], "FI");
+  for (const [n2, t2] of [["modell", fi.plate.tris], ["text", fi.text.tris],
+                          ["under-botten", fi.under.bgTris], ["under-tryck", fi.under.inkTris]]) {
+    const r = C.checkSolid(t2);
+    ok(r.watertight && r.volumeMM3 > 0, `FI 2023: ${n2}`, `${r.badEdges} oparade`);
+  }
+  const fiVals = p23.zones.FI.filter(v => v !== null);
+  const fiMean = fiVals.reduce((a, b) => a + b, 0) / fiVals.length;
+  ok(fiMean > 30 && fiMean < 120, "FI-årsmedel rimligt i öre/kWh", fiMean.toFixed(1));
+
+  // valutakonvertering mot källcache + ECB-kurs (körs där data_src finns)
+  const fxPath = path.join(ROOT, "data_src", "fx_eursek.json");
+  const cachePath = path.join(ROOT, "data_src", "entsoe", "cache", "prices_2023-06.json");
+  if (fs.existsSync(fxPath) && fs.existsSync(cachePath)) {
+    const fx = JSON.parse(fs.readFileSync(fxPath, "utf8")).months["2023-06"];
+    const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    // UTC 2023-06-14T10:00Z = lokal 12:00 → ons v24, slot (24-1)*168+2*24+12
+    const iu = cache.hours_utc.indexOf("2023-06-14T10:00:00Z");
+    const eur = cache.zones.FI[iu];
+    const got = p23.zones.FI[(24 - 1) * 168 + 2 * 24 + 12];
+    const expected = eur * fx / 10;
+    ok(Math.abs(got - expected) < 0.01, "FI-pris = EUR/MWh × ECB-kurs ÷ 10",
+      `${eur} EUR × ${fx.toFixed(3)} → ${expected.toFixed(2)} ≈ ${got} öre/kWh`);
+  } else {
+    console.log("  (data_src saknas — FX-korskontrollen hoppar)");
+  }
+}
+
 console.log(`\n${checks} kontroller, ${failures} fel`);
 process.exit(failures ? 1 : 0);

@@ -76,7 +76,8 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       <label for="zone">Område</label>
       <select id="zone"></select>
       <div class="hint">Hela Sverige är huvudvyn; SE1–SE4 använder samma skala
-        (områdena summerar till Sverigemodellen).</div>
+        (områdena summerar till Sverigemodellen). Länderna (Finland, Tyskland,
+        Frankrike) delar samma skalor — priser i öre/kWh via ECB-månadskurs.</div>
     </div>
     <div class="grp">
       <label>År (ISO-år)</label>
@@ -94,6 +95,7 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
         <option value="day">Dygnsmedel</option>
         <option value="week">Veckomedel</option>
         <option value="month">Månadsmedel</option>
+        <option value="year">Årsmedel</option>
       </select>
       <div class="row2" id="ma-row" style="display:none;margin-top:6px">
         <div><input type="text" id="ma-window" value="24" inputmode="numeric"></div>
@@ -248,6 +250,17 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       ger kontrast, inte djup, och kontrasten är oberoende av stapelfärgen.
       Skriv ut mot slät byggplatta. Årsskiften markeras med 1 mm skåror i
       nollplanet, som dygnsskårorna.</p>
+      <h2>Länder (revision 7)</h2>
+      <p>Finland (2015–), Tyskland DE–LU (2019– , budzonen fanns inte före
+      okt 2018) och Frankrike (2015–) med samma tre grundmått och samma
+      skalor. Priserna är ENTSO-E:s dagen-före-priser i EUR/MWh omräknade
+      till öre/kWh med ECB:s månadsmedelkurs (Sverige: Nord Pool via mgrey
+      med dagskurs — samma underliggande pris, grövre kursupplösning,
+      deklarerat). KPI-justeringen använder svensk KPI även för länderna:
+      allt uttrycks i svenskt penningvärde. Totalpris hushåll finns bara
+      för Sverige (SCB-komponenter). Volymnormering fungerar över
+      landsgränser — t.ex. Finlands förbrukning normerad mot Sveriges
+      jämför dygns- och säsongsform oberoende av landstorlek.</p>
       <h2>Datadeklarationer</h2>
       <ul id="declarations"></ul>
       <h2>Designgrammatik (kort)</h2>

@@ -146,7 +146,8 @@ function transformSeries(yearsData, mode, maWindow) {
       for (let w = 0; w < yd.weeks; w++) {
         for (let t = 0; t < 168; t++) {
           const i = off + w * 168 + t;
-          if (mode === "week") keys[i] = `${yd.isoYear}w${w}`;
+          if (mode === "year") keys[i] = `y${yd.isoYear}`;
+          else if (mode === "week") keys[i] = `${yd.isoYear}w${w}`;
           else if (mode === "day") keys[i] = `${yd.isoYear}w${w}d${Math.floor(t / 24)}`;
           else { // month: kalendermånad från ISO-årets måndag i vecka 1
             const d = new Date(start);
@@ -1158,7 +1159,8 @@ const state = {
 };
 
 const RES_LABEL = {
-  hour: null, ma: null, day: "DYGNSMEDEL", week: "VECKOMEDEL", month: "MÅNADSMEDEL",
+  hour: null, ma: null, day: "DYGNSMEDEL", week: "VECKOMEDEL",
+  month: "MÅNADSMEDEL", year: "ÅRSMEDEL",
 };
 function resolutionSuffix() {
   if (state.resolution === "ma") return `GLID ${state.maWindow} H`;
@@ -1264,7 +1266,8 @@ async function seriesFor(measure, zone, years) {
       yearsData.push({ isoYear: y, weeks: p.weeks, values });
     } else {
       const f = await loadYear(measure, y);
-      yearsData.push({ isoYear: y, weeks: f.weeks, values: f.zones[zone] });
+      yearsData.push({ isoYear: y, weeks: f.weeks,
+        values: f.zones[zone] || new Array(f.weeks * 168).fill(null) });
     }
   }
   // KPI-deflatering till fasta priser (default) — per timmes kalendermånad
@@ -1289,11 +1292,37 @@ async function seriesFor(measure, zone, years) {
   return { yearsData, notes };
 }
 
-function zoneLabel(z) { return z === "SE" ? "Sverige" : z; }
+function zoneLabel(z) {
+  return (state.index.zoneLabels && state.index.zoneLabels[z]) ||
+    (z === "SE" ? "Sverige" : z);
+}
+const isCountry = (z) => ["FI", "DELU", "FR"].includes(z);
+
+// tillgängliga år för mått+zon (beräknade mått = snittet av sina källor)
+function yearsFor(measure, zone) {
+  const info = measureInfo(measure);
+  if (info.computed === "cost") {
+    const p = yearsFor("price", zone), c = yearsFor("consumption", zone);
+    return p.filter(y => c.includes(y));
+  }
+  if (info.computed === "totalpris") {
+    return yearsFor("price", zone).filter(y => y >= 2015);
+  }
+  return (info.zoneYears && info.zoneYears[zone]) || info.years;
+}
 
 // ------------------------------------------------------------- bygga modellen
 async function rebuild() {
   const info = measureInfo(state.measure);
+  if (state.measure === "totalpris" && isCountry(state.zone)) {
+    throw new Error("Totalpris hushåll bygger på SCB:s svenska komponenter och " +
+      "finns bara för Sverige/SE1–SE4. Välj spotpris eller spotkostnad för " +
+      zoneLabel(state.zone) + ".");
+  }
+  const yAvail = yearsFor(state.measure, state.zone);
+  if (!yAvail.length) {
+    throw new Error(`${info.label} saknar data för ${zoneLabel(state.zone)}.`);
+  }
   const years = selectedYears();
   const { yearsData: raw, notes } = await seriesFor(state.measure, state.zone, years);
   const yearsData = transformSeries(raw, state.resolution, state.maWindow);
@@ -1307,9 +1336,11 @@ async function rebuild() {
   let normFactor = 1, normNote = null;
   if (state.norm) {
     const refInfo = measureInfo(state.normMeasure);
-    const missingYears = years.filter(y => !refInfo.years.includes(y));
+    const refYears = yearsFor(state.normMeasure, state.normZone);
+    const missingYears = years.filter(y => !refYears.includes(y));
     if (missingYears.length) {
-      throw new Error(`Referensserien ${refInfo.label} saknar år ${missingYears.join(", ")}`);
+      throw new Error(`Referensserien ${refInfo.label} ${zoneLabel(state.normZone)} ` +
+        `saknar år ${missingYears.join(", ")}`);
     }
     const refRes = await seriesFor(state.normMeasure, state.normZone, years);
     const refData = transformSeries(refRes.yearsData, state.resolution, state.maWindow);
@@ -1778,8 +1809,8 @@ function yearOpt(y) {
   return `<option value="${y}">${y}${p}</option>`;
 }
 function fillYearSelects() {
-  const info = measureInfo(state.measure);
-  const years = info.years;
+  const years = yearsFor(state.measure, state.zone);
+  if (!years.length) return; // guarden i rebuild ger felmeddelandet
   const from = $("year-from"), to = $("year-to");
   from.innerHTML = years.map(yearOpt).join("");
   const def = years[years.length - 1];
@@ -1789,9 +1820,8 @@ function fillYearSelects() {
   refreshToSelect();
 }
 function refreshToSelect() {
-  const info = measureInfo(state.measure);
   const to = $("year-to");
-  const opts = info.years.filter(y => y >= state.yearFrom);
+  const opts = yearsFor(state.measure, state.zone).filter(y => y >= state.yearFrom);
   to.innerHTML = opts.map(yearOpt).join("");
   if (!opts.includes(state.yearTo)) state.yearTo = state.yearFrom;
   to.value = state.yearTo;
@@ -1838,7 +1868,11 @@ function bindUI() {
     state.measure = e.target.value;
     fillYearSelects(); refreshVisibility(); await onChange();
   });
-  $("zone").addEventListener("change", async (e) => { state.zone = e.target.value; await onChange(); });
+  $("zone").addEventListener("change", async (e) => {
+    state.zone = e.target.value;
+    fillYearSelects(); // årslistan är zonberoende (länder har kortare täckning)
+    await onChange();
+  });
   $("year-from").addEventListener("change", async (e) => {
     state.yearFrom = +e.target.value; refreshToSelect(); await onChange();
   });

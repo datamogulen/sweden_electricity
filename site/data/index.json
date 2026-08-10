@@ -17,6 +17,106 @@
     2025,
     2026
    ],
+   "zoneYears": {
+    "SE1": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE2": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE3": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE4": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "FI": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "FR": [
+     2015,
+     2016
+    ],
+    "SE": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "DELU": [
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ]
+   },
    "scalePerUnit": 0.002,
    "scaleLabel": "2 mm = 1 GW"
   },
@@ -24,12 +124,64 @@
    "label": "Elproduktion",
    "unit": "MW",
    "years": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
     2022,
     2023,
     2024,
     2025,
     2026
    ],
+   "zoneYears": {
+    "FI": [
+     2015,
+     2016
+    ],
+    "FR": [
+     2015,
+     2016
+    ],
+    "SE1": [
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE2": [
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE3": [
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE4": [
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE": [
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ]
+   },
    "scalePerUnit": 0.002,
    "scaleLabel": "2 mm = 1 GW"
   },
@@ -57,6 +209,141 @@
     2025,
     2026
    ],
+   "zoneYears": {
+    "SE1": [
+     2008,
+     2009,
+     2010,
+     2011,
+     2012,
+     2013,
+     2014,
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE2": [
+     2008,
+     2009,
+     2010,
+     2011,
+     2012,
+     2013,
+     2014,
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE3": [
+     2008,
+     2009,
+     2010,
+     2011,
+     2012,
+     2013,
+     2014,
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE4": [
+     2008,
+     2009,
+     2010,
+     2011,
+     2012,
+     2013,
+     2014,
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "SE": [
+     2008,
+     2009,
+     2010,
+     2011,
+     2012,
+     2013,
+     2014,
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "FI": [
+     2015,
+     2016,
+     2017,
+     2018,
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ],
+    "FR": [
+     2015,
+     2016
+    ],
+    "DELU": [
+     2019,
+     2020,
+     2021,
+     2022,
+     2023,
+     2024,
+     2025,
+     2026
+    ]
+   },
    "scalePerUnit": 0.1,
    "scaleLabel": "1 mm = 10 öre/kWh"
   }
@@ -66,14 +353,28 @@
   "SE1",
   "SE2",
   "SE3",
-  "SE4"
+  "SE4",
+  "FI",
+  "DELU",
+  "FR"
  ],
+ "zoneLabels": {
+  "SE": "Sverige",
+  "SE1": "SE1",
+  "SE2": "SE2",
+  "SE3": "SE3",
+  "SE4": "SE4",
+  "FI": "Finland",
+  "DELU": "Tyskland (DE–LU)",
+  "FR": "Frankrike"
+ },
  "partialYear": 2026,
  "declarations": {
   "SE_price": "Sveriges spotpris = förbrukningsviktat medel av SE1–SE4 (timvikter ur ENTSO-E-lasten) fr.o.m. 2015; aritmetiskt medel 2008–2014. Före 2011-11-01 var Sverige ett elområde.",
   "time": "Svensk lokaltid; DST-vårens timme saknas, höstens dubbeltimme är medelvärdesbildad (spotpris: första timmen).",
   "weeks": "ISO-veckor (mån–sön); ett år = ISO-år.",
-  "sources": "Spotpris: Nord Pool via mgrey.se/espot (lokal databas). Förbrukning/produktion: ENTSO-E Transparency (lokal cache); produktion = summa av kraftslag, komplett per elområde först 2022."
+  "sources": "Spotpris Sverige: Nord Pool via mgrey.se/espot (öre/kWh, dagskurs). Länder (FI, DE–LU, FR): ENTSO-E dagen-före i EUR/MWh × ECB:s månadsmedelkurs SEK/EUR. Förbrukning/produktion: ENTSO-E Transparency; produktion = summa av kraftslag (SE komplett 2022+, FI/FR 2015+, DE–LU 2019+ — budzonen DE-LU fanns inte före okt 2018).",
+  "countries": "Ländernas priser i öre/kWh (svensk valuta) för kommensurabilitet; KPI-justering använder svensk KPI även för länderna (svenskt penningvärde, deklarerat). Totalpris hushåll finns bara för Sverige (SCB)."
  },
- "built": "2026-08-10 06:02 UTC"
+ "built": "2026-08-10 09:50 UTC"
 }

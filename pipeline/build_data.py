@@ -31,10 +31,24 @@ CACHE = HERE.parent / "data_src" / "entsoe" / "cache"
 TZ = ZoneInfo("Europe/Stockholm")
 
 ZONES = ["SE1", "SE2", "SE3", "SE4"]
+COUNTRIES = ["FI", "DELU", "FR"]               # revision 7: landsjämförelser
+ZONE_LABELS = {"SE": "Sverige", "SE1": "SE1", "SE2": "SE2", "SE3": "SE3",
+               "SE4": "SE4", "FI": "Finland", "DELU": "Tyskland (DE–LU)",
+               "FR": "Frankrike"}
 CUR_ISO_YEAR = date.today().isocalendar()[0]   # pågående år tas med som partiellt
 PRICE_YEARS = range(2008, CUR_ISO_YEAR + 1)    # hela ISO-år med spotpris
 CONS_YEARS = range(2015, CUR_ISO_YEAR + 1)     # hela ISO-år med förbrukning
-PROD_YEARS = range(2022, CUR_ISO_YEAR + 1)     # per-kraftslag komplett först 2022 (SPEC §4)
+PROD_YEARS = range(2015, CUR_ISO_YEAR + 1)     # SE komplett 2022+, FI/FR 2015+,
+                                               # DELU 2019+ (zoneYears styr urvalet)
+FX = None                                      # SEK/EUR månadsmedel (laddas i main)
+
+# rimlighetsintervall för hela år, TWh (byggspärr)
+TWH_RANGES = {
+    ("consumption", "SE"): (120, 160), ("production", "SE"): (130, 180),
+    ("consumption", "FI"): (60, 95),   ("production", "FI"): (55, 95),
+    ("consumption", "DELU"): (400, 560), ("production", "DELU"): (350, 620),
+    ("consumption", "FR"): (380, 560), ("production", "FR"): (400, 600),
+}
 
 
 def iso_weeks_in_year(y: int) -> int:
@@ -113,33 +127,68 @@ def iter_cache(prefix: str):
         yield json.load(open(f))
 
 
-def load_entsoe(prefix: str, per_psr: bool):
-    """{zon: {lokal 'YYYY-MM-DDTHH': [värden]}} — lista pga höstens dubbeltimme."""
-    out = {z: {} for z in ZONES}
-    for d in iter_cache(prefix):
-        hours = d["hours_utc"]
-        for z in ZONES:
-            zdata = d["zones"].get(z)
-            if zdata is None:
+def _merge_hours(out, zone, hours, values, per_psr, to_ore=False):
+    """UTC-timmar → {lokal 'YYYY-MM-DDTHH': [värden]}; ev. EUR/MWh → öre/kWh."""
+    for i, hu in enumerate(hours):
+        if per_psr:
+            vs = [a[i] for a in values.values() if a[i] is not None]
+            v = sum(vs) if vs else None
+        else:
+            v = values[i]
+        if v is None:
+            continue
+        dt = datetime.fromisoformat(hu.replace("Z", "+00:00")).astimezone(TZ)
+        if to_ore:
+            fx = FX.get(dt.strftime("%Y-%m"))
+            if fx is None:
                 continue
-            for i, hu in enumerate(hours):
-                if per_psr:
-                    vs = [a[i] for a in zdata.values() if a[i] is not None]
-                    v = sum(vs) if vs else None
-                else:
-                    v = zdata[i]
-                if v is None:
-                    continue
-                dt = datetime.fromisoformat(hu.replace("Z", "+00:00")).astimezone(TZ)
-                key = dt.strftime("%Y-%m-%dT%H")
-                out[z].setdefault(key, []).append(v)
+            v = v * fx / 10.0            # EUR/MWh × SEK/EUR ÷ 10 = öre/kWh
+        out.setdefault(zone, {}).setdefault(dt.strftime("%Y-%m-%dT%H"), []).append(v)
+
+
+def load_entsoe(prefix: str, per_psr: bool, zones):
+    out = {z: {} for z in zones}
+    for d in iter_cache(prefix):
+        for z in zones:
+            zdata = d["zones"].get(z)
+            if zdata is not None:
+                _merge_hours(out, z, d["hours_utc"], zdata, per_psr)
     return out
 
 
-def fold_entsoe(data, years):
+def load_countries():
+    """countries_*.json → priser (öre/kWh), last och produktion för länderna.
+    FI/DELU-priser+last ligger i ordinarie cache; FR + all produktion här."""
+    prices = {z: {} for z in COUNTRIES}
+    cons = {"FR": {}}
+    gen = {z: {} for z in COUNTRIES}
+    for d in iter_cache("prices"):
+        for z in ["FI", "DELU"]:
+            zdata = d["zones"].get(z)
+            if zdata is not None:
+                _merge_hours(prices, z, d["hours_utc"], zdata, False, to_ore=True)
+    for d in iter_cache("countries"):
+        hours = d["hours_utc"]
+        if d["prices"].get("FR"):
+            _merge_hours(prices, "FR", hours, d["prices"]["FR"], False, to_ore=True)
+        if d["cons"].get("FR"):
+            _merge_hours(cons, "FR", hours, d["cons"]["FR"], False)
+        for z in COUNTRIES:
+            zgen = d["gen"].get(z)
+            if zgen:
+                _merge_hours(gen, z, hours, zgen, True)
+    return prices, cons, gen
+
+
+def fold_entsoe(data, years, decimals=0):
+    """Foldar {zon: {lokaltimme: [värden]}} till plattarrayer per ISO-år.
+    Ger SE = summa av SE1–SE4 när alla fyra zonerna finns i datat."""
+    zones = list(data.keys())
+    has_se = all(z in data for z in ZONES)
+    rnd = (lambda v: round(v, decimals)) if decimals else (lambda v: round(v))
     files = {}
     for y in years:
-        zs = {z: new_series(y) for z in ZONES + ["SE"]}
+        zs = {z: new_series(y) for z in zones + (["SE"] if has_se else [])}
         start, end = iso_year_start(y), iso_year_start(y + 1)
         d = start
         while d < end:
@@ -149,17 +198,19 @@ def fold_entsoe(data, years):
                 if idx is None:
                     continue
                 key = dt.strftime("%Y-%m-%dT%H")
-                tot, all_ok = 0.0, True
-                for z in ZONES:
+                tot, all_ok = 0.0, has_se
+                for z in zones:
                     vs = data[z].get(key)
                     if not vs:
-                        all_ok = False
+                        if z in ZONES:
+                            all_ok = False
                         continue
                     v = sum(vs) / len(vs)  # höstens dubbeltimme medelvärdesbildas
-                    zs[z][idx] = round(v)
-                    tot += v
-                if all_ok:
-                    zs["SE"][idx] = round(tot)
+                    zs[z][idx] = rnd(v)
+                    if z in ZONES:
+                        tot += v
+                if has_se and all_ok:
+                    zs["SE"][idx] = rnd(tot)
             d += timedelta(days=1)
         files[y] = zs
     return files
@@ -178,19 +229,46 @@ def twh(series):
     return sum(v for v in series if v is not None) / 1e6
 
 
+def coverage(series):
+    return sum(1 for v in series if v is not None) / len(series)
+
+
+def zone_years(files, min_cov=0.9):
+    """{zon: [år med ≥ min_cov täckning]} — pågående år: > 500 datatimmar."""
+    zy = {}
+    for y, zs in sorted(files.items()):
+        for z, s in zs.items():
+            n = sum(1 for v in s if v is not None)
+            ok = (n > 500) if y == CUR_ISO_YEAR else (n / len(s) >= min_cov)
+            if ok:
+                zy.setdefault(z, []).append(y)
+    return zy
+
+
 def validate(price_files, cons_files, prod_files):
-    for y, zs in cons_files.items():
-        if y == CUR_ISO_YEAR:
-            continue                     # pågående år valideras inte mot årssummor
-        t = twh(zs["SE"])
-        if not (120 <= t <= 160):
-            refuse(f"förbrukning {y}: {t:.1f} TWh utanför 120–160")
-    for y, zs in prod_files.items():
+    for name, files in [("förbrukning", cons_files), ("produktion", prod_files)]:
+        m = "consumption" if name == "förbrukning" else "production"
+        for y, zs in files.items():
+            if y == CUR_ISO_YEAR:
+                continue                 # pågående år valideras inte mot årssummor
+            for z in ["SE"] + COUNTRIES:
+                if z not in zs or coverage(zs[z]) < 0.9:
+                    continue             # zonår utan täckning erbjuds inte (zoneYears)
+                lo, hi = TWH_RANGES[(m, z)]
+                t = twh(zs[z])
+                if not (lo <= t <= hi):
+                    refuse(f"{name} {y} {z}: {t:.1f} TWh utanför {lo}–{hi}")
+    # ländernas prisårsmedel rimliga (öre/kWh efter FX)
+    for y, zs in price_files.items():
         if y == CUR_ISO_YEAR:
             continue
-        t = twh(zs["SE"])
-        if not (130 <= t <= 180):
-            refuse(f"produktion {y}: {t:.1f} TWh utanför 130–180")
+        for z in COUNTRIES:
+            if z not in zs or coverage(zs[z]) < 0.9:
+                continue
+            vals = [v for v in zs[z] if v is not None]
+            m = sum(vals) / len(vals)
+            if not (-50 <= m <= 500):
+                refuse(f"spotpris {y} {z}: årsmedel {m:.1f} öre/kWh orimligt")
     se3 = [v for v in price_files[2022]["SE3"] if v is not None]
     m = sum(se3) / len(se3)
     if abs(m - 137.9) > 0.7:
@@ -205,13 +283,18 @@ def validate(price_files, cons_files, prod_files):
         last = last_data_date(zs["SE"], CUR_ISO_YEAR)
         if last is None or (date.today() - last).days > 3:
             refuse(f"{name} {CUR_ISO_YEAR}: data slutar {last} (> 3 dygn gammalt)")
-    # täckning: hela år ska ha < 3 % saknade timmar (kantveckor undantagna nedan)
+    # täckning: ERBJUDNA zonår ska ha < 3 % saknade timmar. Zonår under
+    # 90 % täckning erbjuds inte alls (zone_years) och kontrolleras inte —
+    # t.ex. DELU före budzonens födelse eller SE-produktion före 2022.
     for name, files in [("spotpris", price_files), ("förbrukning", cons_files),
                         ("produktion", prod_files)]:
+        zy = zone_years(files)
         for y, zs in files.items():
             if y == CUR_ISO_YEAR:
                 continue
             for z, s in zs.items():
+                if y not in zy.get(z, []):
+                    continue
                 miss = sum(1 for v in s if v is None)
                 if miss / len(s) > 0.03 and not (name != "spotpris" and y == 2015):
                     refuse(f"{name} {y} {z}: {miss} saknade timmar (> 3 %)")
@@ -254,12 +337,19 @@ def write_files(measure, unit, files):
 
 
 def main():
+    global FX
     OUT.mkdir(parents=True, exist_ok=True)
-    print("Läser ENTSO-E förbrukning …")
-    cons = load_entsoe("consumption", per_psr=False)
-    print("Läser ENTSO-E produktion …")
-    prod = load_entsoe("generation", per_psr=True)
-    print("Läser spotpriser …")
+    FX = json.load(open(HERE.parent / "data_src" / "fx_eursek.json"))["months"]
+    print("Läser ENTSO-E förbrukning (SE-zoner + FI + DELU) …")
+    cons = load_entsoe("consumption", per_psr=False, zones=ZONES + ["FI", "DELU"])
+    print("Läser ENTSO-E produktion (SE-zoner) …")
+    prod = load_entsoe("generation", per_psr=True, zones=ZONES)
+    print("Läser landsdata (FR + produktion FI/DELU/FR, EUR→öre via ECB) …")
+    prices_c, cons_fr, gen_c = load_countries()
+    cons["FR"] = cons_fr["FR"]
+    for z, d in gen_c.items():
+        prod[z] = d
+    print("Läser spotpriser (SE, sqlite) …")
     prices = load_prices()
 
     weights = {}  # lokal timnyckel -> [SE1..SE4]-förbrukning, för viktat prismedel
@@ -279,8 +369,20 @@ def main():
 
     print("Foldar till ISO-vecka × timme …")
     price_files = fold_prices(prices, weights)
+    price_c_files = fold_entsoe(prices_c, CONS_YEARS, decimals=2)
+    for y, zs in price_c_files.items():
+        if y in price_files:
+            for z, s in zs.items():
+                price_files[y][z] = s
     cons_files = fold_entsoe(cons, CONS_YEARS)
     prod_files = fold_entsoe(prod, PROD_YEARS)
+    # Sveriges produktion före 2022 var bara vindkraft i ENTSO-E (full täckning
+    # men fel totaler) — nollas hårt så zonåren utesluter den (SPEC §4)
+    for y, zs in prod_files.items():
+        if y < 2022:
+            for z in ["SE"] + ZONES:
+                if z in zs:
+                    zs[z] = [None] * len(zs[z])
 
     validate(price_files, cons_files, prod_files)
 
@@ -290,20 +392,24 @@ def main():
             "consumption": {
                 "label": "Elförbrukning", "unit": "MW",
                 "years": write_files("consumption", "MW", cons_files),
+                "zoneYears": zone_years(cons_files),
                 "scalePerUnit": 0.002, "scaleLabel": "2 mm = 1 GW",
             },
             "production": {
                 "label": "Elproduktion", "unit": "MW",
                 "years": write_files("production", "MW", prod_files),
+                "zoneYears": zone_years(prod_files),
                 "scalePerUnit": 0.002, "scaleLabel": "2 mm = 1 GW",
             },
             "price": {
                 "label": "Spotpris", "unit": "öre/kWh",
                 "years": write_files("price", "öre/kWh", price_files),
+                "zoneYears": zone_years(price_files),
                 "scalePerUnit": 0.1, "scaleLabel": "1 mm = 10 öre/kWh",
             },
         },
-        "zones": ["SE"] + ZONES,
+        "zones": ["SE"] + ZONES + COUNTRIES,
+        "zoneLabels": ZONE_LABELS,
         "partialYear": CUR_ISO_YEAR,
         "declarations": {
             "SE_price": "Sveriges spotpris = förbrukningsviktat medel av SE1–SE4 "
@@ -312,10 +418,16 @@ def main():
             "time": "Svensk lokaltid; DST-vårens timme saknas, höstens dubbeltimme "
                     "är medelvärdesbildad (spotpris: första timmen).",
             "weeks": "ISO-veckor (mån–sön); ett år = ISO-år.",
-            "sources": "Spotpris: Nord Pool via mgrey.se/espot (lokal databas). "
-                       "Förbrukning/produktion: ENTSO-E Transparency (lokal cache); "
-                       "produktion = summa av kraftslag, komplett per elområde "
-                       "först 2022.",
+            "sources": "Spotpris Sverige: Nord Pool via mgrey.se/espot (öre/kWh, "
+                       "dagskurs). Länder (FI, DE–LU, FR): ENTSO-E dagen-före i "
+                       "EUR/MWh × ECB:s månadsmedelkurs SEK/EUR. Förbrukning/"
+                       "produktion: ENTSO-E Transparency; produktion = summa av "
+                       "kraftslag (SE komplett 2022+, FI/FR 2015+, DE–LU 2019+ — "
+                       "budzonen DE-LU fanns inte före okt 2018).",
+            "countries": "Ländernas priser i öre/kWh (svensk valuta) för "
+                         "kommensurabilitet; KPI-justering använder svensk KPI "
+                         "även för länderna (svenskt penningvärde, deklarerat). "
+                         "Totalpris hushåll finns bara för Sverige (SCB).",
         },
         "built": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
