@@ -65,7 +65,7 @@ def iso_year_start(y: int) -> date:
     return jan4 - timedelta(days=jan4.isocalendar()[2] - 1)
 
 
-def slot_of(dt_local: datetime, iso_year: int) -> int | None:
+def slot_of(dt_local, iso_year):  # -> int eller None (serverns python är < 3.10)
     """Index i plattarrayen för en lokal timme, eller None om fel ISO-år."""
     iy, iw, iwd = dt_local.isocalendar()
     if iy != iso_year:
