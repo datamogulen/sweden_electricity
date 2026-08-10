@@ -86,6 +86,29 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       </div>
       <div class="hint" id="year-hint"></div>
     </div>
+    <div class="grp">
+      <label for="resolution">Upplösning / utjämning (D6)</label>
+      <select id="resolution">
+        <option value="hour" selected>Timme (rå data)</option>
+        <option value="ma">Glidande medel — N timmar</option>
+        <option value="day">Dygnsmedel</option>
+        <option value="week">Veckomedel</option>
+        <option value="month">Månadsmedel</option>
+      </select>
+      <div class="row2" id="ma-row" style="display:none;margin-top:6px">
+        <div><input type="text" id="ma-window" value="24" inputmode="numeric"></div>
+        <div class="hint" style="flex:2">timmar, centrerat fönster</div>
+      </div>
+      <div class="hint">Medel graveras på modellen (t.ex. DYGNSMEDEL, GLID 24 H)
+        — aggregering slätar timtopparna och är därför ett synligt val.</div>
+    </div>
+    <div class="grp" id="negtwin-row" style="display:none">
+      <div class="chk"><input type="checkbox" id="negtwin">
+        <span>Visa negativ-tvillingen</span></div>
+      <div class="hint">Negativa priser är klippta till 0 i huvudmodellen.
+        Tvillingen visar enbart |negativa| priser i samma skala och layout
+        (utan texter) och följer med i exporten som egen STL.</div>
+    </div>
     <div class="grp" id="cap-row">
       <label for="cap">Pristak (D3 — kapning är ett synligt val)</label>
       <select id="cap">
@@ -172,10 +195,20 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       år X+1 ligger direkt framför december år X ("rygg mot rygg"). Inom ett
       år ligger v52 främst och v1 bakerst; årtal och veckonummer på höger
       apron gör riktningen läsbar i plast.</p>
-      <h2>Negativa priser och nollplanet</h2>
-      <p>Nollplanet är apronens ovansida. När urvalet innehåller negativa
-      spotpriser höjs hela plattan med en sockel och negativa timmar blir
-      <i>gropar</i> — inget klipps. Sockelhöjden graveras (0 = +N mm).</p>
+      <h2>Negativa priser (D2, revision 1)</h2>
+      <p>Negativa spotpriser klipps till 0 i huvudmodellen — deklarerat och
+      räknat i följesedeln — och redovisas i stället i en
+      <i>negativ-tvilling</i>: samma layout och skala men enbart beloppen av
+      de negativa timmarna, utan texter. Ursprungsbeslutet (gropar under ett
+      förhöjt nollplan) revs upp efter granskning: groparna syntes inte och
+      sockeln kostade filament. Se SPEC_REVISIONS.md.</p>
+      <h2>Undersidan</h2>
+      <p>Undersidan bär QR-kod (till denna sida) och källtext, speglade så de
+      läses rättvänt underifrån, som flush tvåfärgstryck i skiktet 0–0,6 mm:
+      en ljus bakgrundsdel över hela undersidan och en mörk tryckdel — färg
+      ger kontrast, inte djup, och kontrasten är oberoende av stapelfärgen.
+      Skriv ut mot slät byggplatta. Årsskiften markeras med 1 mm skåror i
+      nollplanet, som dygnsskårorna.</p>
       <h2>Datadeklarationer</h2>
       <ul id="declarations"></ul>
       <h2>Designgrammatik (kort)</h2>

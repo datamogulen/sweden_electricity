@@ -9,6 +9,12 @@ projektinterna etiketter med artikelns begrepp som kanon.
 Status: spec v1, 2026-08-09. D-besluten är beställarens att riva upp —
 revisioner dokumenteras i `SPEC_REVISIONS.md`, originalen försvaras inte.
 
+**OBS 2026-08-10:** fem revisioner har genomförts efter beställarens första
+granskning (D2 negativa priser → klipp + tvilling; årsskåror; undersida med
+QR/källtext/bakgrundsdel; upplösningsval D6; data till idag med daglig
+uppdatering). Texten nedan är ORIGINALSPECEN — läs den tillsammans med
+[SPEC_REVISIONS.md](SPEC_REVISIONS.md).
+
 ---
 
 ## 0. Fråga-först: vad varje mått svarar på

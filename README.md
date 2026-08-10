@@ -19,18 +19,26 @@ cd site && python -m http.server 8742
 
 (`file://` fungerar inte — appen hämtar data med fetch.)
 
-## Pipeline (körs om när källdata uppdaterats)
+## Data och daglig uppdatering
+
+Källorna ligger projektlokalt i `data_src/` (utanför git; seedade från
+hedin.it-backupen): `spotprices.sqlite` (SN1–SN4, svensk lokaltid, öre/kWh)
+och ENTSO-E-cachen (UTC, MW). Täckning: spotpris ISO-2008 → idag,
+förbrukning 2015 → idag, produktion 2022 → idag (före ~nov 2021
+rapporterade ENTSO-E bara vindkraft per elområde, så de åren erbjuds inte).
+Pågående ISO-år byggs som partiellt (`partial` + `dataThrough`).
 
 ```bash
-python pipeline/build_data.py      # sqlite + ENTSO-E-cache → site/data/*.json
-python pipeline/extract_glyphs.py  # DejaVu Sans Bold → site/glyphs.json
+./pipeline/update_daily.sh         # mgrey + ENTSO-E + ombyggda års-JSON
+# cron: 5 14 * * * cd ~/Development/sweden_electricity && ./pipeline/update_daily.sh >> data_src/update.log 2>&1
 ```
 
-Källor (lokala, se SPEC §4): `spotprices.sqlite` (SN1–SN4, svensk lokaltid,
-ISO-år 2008–2025) och ENTSO-E-cachen (UTC; förbrukning 2015–2025, produktion
-2022–2025 — före ~nov 2021 rapporterades bara vindkraft per elområde, så de
-åren erbjuds inte). Pipelinen **vägrar** vid brott mot referensintervallen
-(årssummor i TWh, SE3-medel 2022, täckning).
+Delsteg: `update_spot.py` (mgrey.se/espot — Vattenfalls gamla API är dött,
+403), `fetch_cache.py` (ENTSO-E, token i `data_src/entsoe_token.txt` — får
+ALDRIG committas), `build_data.py` (foldning + validering; **vägrar** vid
+brott: årssummor i TWh, SE3-medel 2022, täckning, data äldre än 3 dygn för
+pågående år). Engångssteg: `extract_glyphs.py` (font), `make_qr.py`
+(QR-matris, verifierad genom riktig avkodning med cv2).
 
 ## Test
 
@@ -59,10 +67,15 @@ kända-dåliga indata som bevisar att varje spärr avfyrar.
 
 ## Export
 
-Zip med `*_modell.stl` (datafärg) + `*_text.stl` (kontrastfärg, samma
-koordinatsystem — importera BÅDA, auto-arrange av) + `FOLJESEDEL.txt` med
-exportens hela tillstånd. Exporten vägrar om soliderna inte är vattentäta
-eller text hamnar under 2,2 mm versalhöjd.
+Zip med fyra STL-filer i samma koordinatsystem (importera ALLA, auto-arrange
+av): `*_modell.stl` (datafärg), `*_text.stl` (toppkontrast), 
+`*_under_botten.stl` (ljust bakgrundsskikt 0–0,6 mm över hela undersidan),
+`*_under_tryck.stl` (mörk QR + speglad källtext) — plus
+`*_negativ_modell.stl` (tvillingen) när urvalet har negativa priser, och
+`FOLJESEDEL.txt` med exportens hela tillstånd. Exporten vägrar om någon
+solid inte är vattentät eller text hamnar under 2,2 mm versalhöjd.
+Undersidans QR: `HTTPS://HEDIN.IT/EL3D` — vid deploy behövs en
+skiftlägesokänslig redirect `/EL3D` → appen.
 
 ## Deklarerade skalor (familjeinvarianter)
 

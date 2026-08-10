@@ -44,7 +44,10 @@ function zipQuadStrip(tris, A, B, flip) {
   }
 }
 
-function heightfieldSolid(xs, ys, H) {
+// H[j][i] = topphöjd, eller null = cellen saknas (hål rakt igenom).
+// zBot = gemensam bottennivå (0.6 för modell med undersidesskikt, 0 annars).
+function heightfieldSolid(xs, ys, H, zBot) {
+  const zb = zBot || 0;
   const nx = xs.length - 1, ny = ys.length - 1;
   const tris = [];
   const hAt = (i, j) => (i < 0 || j < 0 || i >= nx || j >= ny) ? null : H[j][i];
@@ -64,10 +67,12 @@ function heightfieldSolid(xs, ys, H) {
 
   for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
-      const x0 = xs[i], x1 = xs[i + 1], y0 = ys[j], y1 = ys[j + 1], h = H[j][i];
+      const h = H[j][i];
+      if (h === null) continue;
+      const x0 = xs[i], x1 = xs[i + 1], y0 = ys[j], y1 = ys[j + 1];
       // topp (normal +z) och botten (normal −z)
       pushQuad(tris, [x0, y0, h], [x1, y0, h], [x1, y1, h], [x0, y1, h]);
-      pushQuad(tris, [x0, y0, 0], [x0, y1, 0], [x1, y1, 0], [x1, y0, 0]);
+      pushQuad(tris, [x0, y0, zb], [x0, y1, zb], [x1, y1, zb], [x1, y0, zb]);
     }
   }
   // väggar längs vertikala linjer x = xs[i], mellan cellerna (i−1,j) och (i,j)
@@ -75,7 +80,7 @@ function heightfieldSolid(xs, ys, H) {
     for (let j = 0; j < ny; j++) {
       const hL = hAt(i - 1, j), hR = hAt(i, j);
       if (hL === null && hR === null) continue;
-      const lo = (hL === null || hR === null) ? 0 : Math.min(hL, hR);
+      const lo = (hL === null || hR === null) ? zb : Math.min(hL, hR);
       const hi = (hL === null || hR === null) ? (hL === null ? hR : hL) : Math.max(hL, hR);
       if (hi <= lo) continue;
       const outwardPlusX = (hL === null ? -Infinity : hL) > (hR === null ? -Infinity : hR);
@@ -89,7 +94,7 @@ function heightfieldSolid(xs, ys, H) {
     for (let i = 0; i < nx; i++) {
       const hF = hAt(i, j - 1), hB = hAt(i, j);
       if (hF === null && hB === null) continue;
-      const lo = (hF === null || hB === null) ? 0 : Math.min(hF, hB);
+      const lo = (hF === null || hB === null) ? zb : Math.min(hF, hB);
       const hi = (hF === null || hB === null) ? (hF === null ? hB : hF) : Math.max(hF, hB);
       if (hi <= lo) continue;
       const outwardPlusY = (hF === null ? -Infinity : hF) > (hB === null ? -Infinity : hB);
@@ -99,6 +104,88 @@ function heightfieldSolid(xs, ys, H) {
     }
   }
   return tris;
+}
+
+// ------------------------------------------------ upplösning/utjämning (D6)
+// Transformerar timserien FÖRE foldningen. Saknade timmar förblir saknade
+// (deklarerat). 'ma' = centrerat glidande medel över N timmar, kronologiskt
+// över hela urvalet (även över årsgränser). 'day'/'week'/'month' = medel per
+// dygn/ISO-vecka/kalendermånad, utlagt på gruppens alla timceller.
+function transformSeries(yearsData, mode, maWindow) {
+  if (!mode || mode === "hour") return yearsData;
+  const flat = [];
+  for (const yd of yearsData) {
+    for (let i = 0; i < yd.weeks * 168; i++) {
+      const v = yd.values[i];
+      flat.push(v === undefined ? null : v);
+    }
+  }
+  const n = flat.length;
+  const out = new Array(n).fill(null);
+  if (mode === "ma") {
+    const w = Math.max(2, Math.round(maWindow || 24));
+    const back = Math.floor((w - 1) / 2), fwd = w - 1 - back;
+    // prefixsummor över icke-null för O(n)
+    const ps = new Array(n + 1).fill(0), pc = new Array(n + 1).fill(0);
+    for (let i = 0; i < n; i++) {
+      ps[i + 1] = ps[i] + (flat[i] === null ? 0 : flat[i]);
+      pc[i + 1] = pc[i] + (flat[i] === null ? 0 : 1);
+    }
+    for (let i = 0; i < n; i++) {
+      if (flat[i] === null) continue;
+      const a = Math.max(0, i - back), b = Math.min(n - 1, i + fwd);
+      const cnt = pc[b + 1] - pc[a];
+      if (cnt > 0) out[i] = (ps[b + 1] - ps[a]) / cnt;
+    }
+  } else {
+    // gruppnyckel per index
+    const keys = new Array(n);
+    let off = 0;
+    for (const yd of yearsData) {
+      const start = isoWeek1Monday(yd.isoYear);
+      for (let w = 0; w < yd.weeks; w++) {
+        for (let t = 0; t < 168; t++) {
+          const i = off + w * 168 + t;
+          if (mode === "week") keys[i] = `${yd.isoYear}w${w}`;
+          else if (mode === "day") keys[i] = `${yd.isoYear}w${w}d${Math.floor(t / 24)}`;
+          else { // month: kalendermånad från ISO-årets måndag i vecka 1
+            const d = new Date(start);
+            d.setUTCDate(d.getUTCDate() + w * 7 + Math.floor(t / 24));
+            keys[i] = d.toISOString().slice(0, 7);
+          }
+        }
+      }
+      off += yd.weeks * 168;
+    }
+    const sums = new Map();
+    for (let i = 0; i < n; i++) {
+      if (flat[i] === null) continue;
+      const k = keys[i];
+      const s = sums.get(k) || [0, 0];
+      s[0] += flat[i]; s[1]++;
+      sums.set(k, s);
+    }
+    for (let i = 0; i < n; i++) {
+      if (flat[i] === null) continue;
+      const s = sums.get(keys[i]);
+      out[i] = s[0] / s[1];
+    }
+  }
+  const res = [];
+  let off2 = 0;
+  for (const yd of yearsData) {
+    res.push({ isoYear: yd.isoYear, weeks: yd.weeks,
+               values: out.slice(off2, off2 + yd.weeks * 168) });
+    off2 += yd.weeks * 168;
+  }
+  return res;
+}
+
+function isoWeek1Monday(isoYear) {
+  const jan4 = new Date(Date.UTC(isoYear, 0, 4));
+  const wd = (jan4.getUTCDay() + 6) % 7;
+  jan4.setUTCDate(jan4.getUTCDate() - wd);
+  return jan4;
 }
 
 // --------------------------------------------------------- modellkonfiguration
@@ -141,38 +228,58 @@ function seriesVolume(yearsData, scalePerUnit, cap, floor) {
 }
 
 // ------------------------------------------------------------- plattsoliden
+// Radlista (kronologisk): veckorader per år + 1 mm skåra (YEAR_GAP-rad på
+// nollplanet) mellan årsblocken — årsskiftena läses som dygnsskårorna.
+function buildRowsMeta(years) {
+  const rows = [];
+  years.forEach((y, yi) => {
+    if (yi > 0) rows.push({ gap: true });
+    for (let w = 0; w < y.weeks; w++) rows.push({ yi, w });
+  });
+  return rows;
+}
+
 function buildPlate(cfg) {
   const ch = computeHeights(cfg);
   const zP = BASE + ch.plinth;              // nollplanet = apronens ovansida
-  const N = ch.nRows;
+  const rowsMeta = buildRowsMeta(cfg.years);
+  const M = rowsMeta.length;
+  const zBot = cfg.underT || 0;             // 0.6 när undersidesskikt används
+  // kronologiskt radindex c ligger på y = FRONT_APRON + (M−1−c)·ROW_D:
+  // nyaste raden främst; januari år X+1 direkt framför december år X.
+  const weekStart = [];                     // kumulativ startvecka per år
+  { let acc = 0; for (const y of cfg.years) { weekStart.push(acc); acc += y.weeks; } }
+
   const xs = [];
   for (let d = 0; d < 7; d++) for (let h = 0; h <= 24; h++) xs.push(d * 25 + h);
   xs.push(DATA_W + RIGHT_APRON);
   const ys = [0, 6, 12];
-  for (let i = 1; i <= N; i++) ys.push(FRONT_APRON + i * ROW_D);
+  for (let i = 1; i <= M; i++) ys.push(FRONT_APRON + i * ROW_D);
   const nx = xs.length - 1, ny = ys.length - 1;
 
   const H = [];
   for (let j = 0; j < ny; j++) {
     const rowH = new Array(nx);
+    const meta = j >= 2 ? rowsMeta[M - 1 - (j - 2)] : null; // främsta raden = sista
     for (let i = 0; i < nx; i++) {
       const x0 = xs[i];
-      let h = zP; // aproner, dygnsmellanrum och saknade timmar ligger på nollplanet
-      if (j >= 2 && x0 < DATA_W) {
+      let h = zP; // aproner, skåror, dygnsmellanrum, saknade timmar: nollplanet
+      if (meta && !meta.gap && x0 < DATA_W) {
         const d = Math.floor(x0 / 25), hh = x0 - d * 25;
         if (hh < 24) {
-          const c = N - 1 - (j - 2);            // rad 0 (främst) = nyaste veckan
+          const c = weekStart[meta.yi] + meta.w;
           const v = ch.rows[c][d * 24 + hh];    // dygnsblock d = ISO-veckodag d
-          if (v !== null) h = Math.max(zP + v, BASE); // gropbotten aldrig under basen
+          if (v !== null) h = Math.max(zP + v, Math.max(BASE, zBot + 0.4));
         }
       }
       rowH[i] = h;
     }
     H.push(rowH);
   }
-  const tris = heightfieldSolid(xs, ys, H);
-  return { tris, zP, nRows: N, plinth: ch.plinth, stats: ch.stats,
-           widthMM: DATA_W + RIGHT_APRON, depthMM: FRONT_APRON + N * ROW_D,
+  const tris = heightfieldSolid(xs, ys, H, zBot);
+  return { tris, zP, nRows: M, rowsMeta, weekStart, plinth: ch.plinth,
+           stats: ch.stats, zBot,
+           widthMM: DATA_W + RIGHT_APRON, depthMM: FRONT_APRON + M * ROW_D,
            heightsRows: ch.rows };
 }
 
@@ -611,13 +718,21 @@ function buildTextSolid(cfg, glyphData, plate) {
   const z0 = zP - TEXT_EMBED, z1 = zP + TEXT_PROUD;
   const N = plate.nRows;
 
-  // 1. Titelband y 0–6: centrerad, cap 4,6 → krymp till bredd, golv 2,2 (spärr)
+  // 1. Titelband y 0–6: centrerad, cap 4,6 → krymp till bredd, golv 2,2.
+  // Ryms den inte ens på golvet VÄGRAR bygget (aldrig tyst överhäng — E3).
   {
     let cap = 4.6;
     const maxW = DATA_W + RIGHT_APRON - 4;
     let probe = layoutLine(glyphData, cfg.title, cap);
-    if (probe.width > maxW) cap = Math.max(CAP_FLOOR, cap * maxW / probe.width);
-    probe = layoutLine(glyphData, cfg.title, cap);
+    if (probe.width > maxW) {
+      const capNeeded = cap * maxW / probe.width;
+      if (capNeeded < CAP_FLOOR - 1e-9) {
+        throw new Error(`BYGGSPÄRR: titeln "${cfg.title}" ryms inte ens vid ` +
+          `golvet 2,2 mm (kräver ${capNeeded.toFixed(2)} mm) — korta titeln`);
+      }
+      cap = capNeeded;
+      probe = layoutLine(glyphData, cfg.title, cap);
+    }
     const x = (DATA_W + RIGHT_APRON - probe.width) / 2;
     placeTextBlock(tris, glyphData, cfg.title, cap, x, 0.7, z0, z1, report, "titel");
   }
@@ -632,13 +747,13 @@ function buildTextSolid(cfg, glyphData, plate) {
   }
 
   // 3. Höger apron: per år — årtal vid årsblockets framkant + valda veckonummer.
-  //   Rad c (kronologiskt) ligger på y = FRONT_APRON + (N−1−c)·ROW_D.
-  let off = 0;
+  //   Radindex i rowsMeta (inkl. årsskåror): idx(yi, w0) = veckostart + yi skåror + w0.
+  const rowIdx = (yi, w0) => plate.weekStart[yi] + yi + w0;
+  const rowY = (idx) => FRONT_APRON + (N - 1 - idx) * ROW_D;
   const yearBands = [];
-  for (const yd of cfg.years) {
-    const cFirst = off, cLast = off + yd.weeks - 1;
-    const yFront = FRONT_APRON + (N - 1 - cLast) * ROW_D;      // årets nyaste rad
-    const yBack = FRONT_APRON + (N - 1 - cFirst) * ROW_D + ROW_D;
+  cfg.years.forEach((yd, yi) => {
+    const yFront = rowY(rowIdx(yi, yd.weeks - 1));             // årets nyaste rad
+    const yBack = rowY(rowIdx(yi, 0)) + ROW_D;
     const capY = 3.6;
     const yearStr = String(yd.isoYear);
     const lineY = layoutLine(glyphData, yearStr, capY);
@@ -652,11 +767,10 @@ function buildTextSolid(cfg, glyphData, plate) {
     let prevBand = null;
     for (const w of cfg.weekLabels) {
       if (w < 1 || w > yd.weeks) continue;
-      const c = off + w - 1;
-      const rowY = FRONT_APRON + (N - 1 - c) * ROW_D;
+      const yRow = rowY(rowIdx(yi, w - 1));
       const label = `v${w}`;
       const lw = layoutLine(glyphData, label, capW);
-      let yLab = rowY + ROW_D / 2 - capW / 2;
+      let yLab = yRow + ROW_D / 2 - capW / 2;
       yLab = Math.max(yFront + 0.4, Math.min(yLab, yBack - capW - 0.4));
       const band = { y0: yLab - 0.5, y1: yLab + capW + 0.5 };
       const hitsYear = yearBands.some(b => band.y0 < b.y1 && band.y1 > b.y0);
@@ -671,8 +785,7 @@ function buildTextSolid(cfg, glyphData, plate) {
         `vecka v${w} (${yd.isoYear})`);
       prevBand = band;
     }
-    off += yd.weeks;
-  }
+  });
 
   // Golvkontroll över hela rapporten (spärren har redan vägrat per block,
   // detta är bältet till hängslena — och tabellen loggas alltid)
@@ -682,6 +795,161 @@ function buildTextSolid(cfg, glyphData, plate) {
     }
   }
   return { tris, report };
+}
+
+// --------------------------------------------------- undersidan (QR + text + fält)
+// Tre filer skrivs ut i bandet z 0–UNDER_T under modellen: bakgrundsfältet
+// (ljus kontrast, hela fotavtrycket minus tryck), trycket (mörk kontrast:
+// QR-moduler + glyfer) — färg, inte djup (praxis §2.4). Geometrin speglas
+// (x → bredd−x) så den läses rättvänt underifrån.
+const UNDER_T = 0.6;          // tre lager à 0,2 mm
+const QR_MODULE = 1.4;        // mm/modul — golv 1,25 (praxis §2.4b), spärr nedan
+
+function prismWithHoles(tris, outer, holes, z0, z1) {
+  const coords = [];
+  const holeIdx = [];
+  for (const p of outer) coords.push(p[0], p[1]);
+  for (const h of holes) {
+    holeIdx.push(coords.length / 2);
+    for (const p of h) coords.push(p[0], p[1]);
+  }
+  const idx = earcut(coords, holeIdx.length ? holeIdx : null, 2);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = [coords[idx[t]*2], coords[idx[t]*2+1]],
+          b = [coords[idx[t+1]*2], coords[idx[t+1]*2+1]],
+          c = [coords[idx[t+2]*2], coords[idx[t+2]*2+1]];
+    pushTri(tris, [a[0],a[1],z1], [b[0],b[1],z1], [c[0],c[1],z1]);
+    pushTri(tris, [a[0],a[1],z0], [c[0],c[1],z0], [b[0],b[1],z0]);
+  }
+  for (const ring of [outer, ...holes]) {
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i], q = ring[(i + 1) % ring.length];
+      if (p[0] === q[0] && p[1] === q[1]) continue;
+      pushQuad(tris, [p[0],p[1],z0], [q[0],q[1],z0], [q[0],q[1],z1], [p[0],p[1],z1]);
+    }
+  }
+}
+
+// spegling x → W−x med bevarad ringorientering (punktordningen vänds)
+function mirrorRing(pts, W) {
+  return pts.map(p => [W - p[0], p[1]]).reverse();
+}
+
+function buildUnderside(cfg, glyphData, qrData, plate) {
+  if (QR_MODULE < 1.25) throw new Error("BYGGSPÄRR: QR-modul under golvet 1,25 mm");
+  const W = plate.widthMM, D = plate.depthMM, T = UNDER_T;
+  const bg = [], ink = [];
+  const report = [];
+  const size = qrData.size;
+  const sym = size * QR_MODULE;
+
+  // layout i underifrån-vy (u = W−x, v = y): QR till höger, text till vänster
+  const uQR0 = W - 8 - sym, vQR0 = Math.max(6, (D - sym) / 2);
+  if (sym + 2 * QR_MODULE * 2 > D - 8) {
+    throw new Error("BYGGSPÄRR: QR-symbolen ryms inte på undersidan");
+  }
+  // verkliga koordinater för QR-rutnätet (spegling: u → x = W−u)
+  const xQR0 = W - (uQR0 + sym);
+  const qxs = [], qys = [];
+  for (let k = 0; k <= size; k++) { qxs.push(xQR0 + k * QR_MODULE); qys.push(vQR0 + k * QR_MODULE); }
+  // matris[r][c]: r=0 översta raden i vanlig vy. I vår grid: kolumn i (låg x)
+  // motsvarar spegling av kolumnindex; rad j (låg y) = nedersta = sista raden.
+  const darkH = [], lightH = [];
+  for (let j = 0; j < size; j++) {
+    const dRow = [], lRow = [];
+    for (let i = 0; i < size; i++) {
+      const r = size - 1 - j, c = size - 1 - i; // spegling + v-flip
+      const dark = qrData.matrix[r][c] === 1;
+      dRow.push(dark ? T : null);
+      lRow.push(dark ? null : T);
+    }
+    darkH.push(dRow); lightH.push(lRow);
+  }
+  for (const t of heightfieldSolid(qxs, qys, darkH, 0)) ink.push(t);
+  for (const t of heightfieldSolid(qxs, qys, lightH, 0)) bg.push(t);
+  report.push({ name: "QR", text: qrData.url,
+                capMM: null, qrModuleMM: QR_MODULE, symbolMM: +sym.toFixed(1) });
+
+  // textblock: rader uppifrån (hög v) och nedåt, i u-rymd, sedan speglade
+  const capU = 2.8, pitch = 1.45 * capU;
+  const uText0 = 8, uTextMax = uQR0 - 2 * QR_MODULE - 4;
+  const lines = (cfg.underLines || []).slice();
+  const maxLines = Math.floor((D - 12) / pitch);
+  const dropped = lines.length > maxLines ? lines.splice(maxLines) : [];
+  for (const dl of dropped) report.push({ name: "undersida rad", text: dl,
+    skipped: "ryms inte på undersidan — deklareras" });
+  // textfältets rektangel (u-rymd) → verklig
+  const blockH = lines.length ? (lines.length - 1) * pitch + capU : 0;
+  const vTop = Math.min(D - 6, vQR0 + sym);
+  const vBase0 = vTop - capU;
+  const rectU = [uText0 - 2, uTextMax + 2];
+  const rectV = [Math.max(4, vBase0 - (lines.length - 1) * pitch - 2), vTop + 2];
+  const rectX = [W - rectU[1], W - rectU[0]];
+
+  // glyfgrupper (ytterring + dess hål, via parent-kopplingen) i verkliga,
+  // speglade koordinater. Ink = glyf MED hål; hålen blir dessutom ö-prismor i
+  // bakgrundsfärg (flush — hålet i O är bakgrundsfärg, inte luft).
+  const glyphGroups = [];
+  lines.forEach((txt, li) => {
+    if (!txt) return;
+    let cap = capU;
+    let line = layoutLine(glyphData, txt, cap);
+    if (line.width > uTextMax - uText0) {
+      const capNeeded = cap * (uTextMax - uText0) / line.width;
+      if (capNeeded < CAP_FLOOR - 1e-9) {
+        throw new Error(`BYGGSPÄRR: undersidesraden "${txt}" ryms inte ens vid ` +
+          `golvet 2,2 mm — korta raden`);
+      }
+      cap = capNeeded;
+      line = layoutLine(glyphData, txt, cap);
+    }
+    const vBase = vBase0 - li * pitch;
+    const real = (pts) => mirrorRing(pts.map(p => [p[0] + uText0, p[1] + vBase]), W);
+    for (const c of line.contours) {
+      if (c.hole) continue;
+      const holes = line.contours.filter(h => h.hole && h.parent === c.idx);
+      glyphGroups.push({ outer: real(c.pts), holes: holes.map(h => real(h.pts)) });
+    }
+    report.push({ name: `undersida rad ${li + 1}`, text: txt, capMM: +cap.toFixed(2),
+                  widthMM: +line.width.toFixed(1) });
+  });
+  for (const g of glyphGroups) {
+    prismWithHoles(ink, g.outer, g.holes, 0, T);
+    for (const isl of g.holes) {
+      prismWithHoles(bg, isl.slice().reverse(), [], 0, T); // ö: CW → CCW ytterring
+    }
+  }
+
+  // bakgrundsfältet: hela fotavtrycket minus QR-rektangeln minus textrektangeln
+  const fxs = [0, W], fys = [0, D];
+  const addLine = (arr, v) => { if (!arr.includes(v)) arr.push(v); };
+  addLine(fxs, qxs[0]); addLine(fxs, qxs[size]);
+  addLine(fys, qys[0]); addLine(fys, qys[size]);
+  addLine(fxs, rectX[0]); addLine(fxs, rectX[1]);
+  addLine(fys, rectV[0]); addLine(fys, rectV[1]);
+  fxs.sort((a, b) => a - b); fys.sort((a, b) => a - b);
+  const FH = [];
+  for (let j = 0; j < fys.length - 1; j++) {
+    const row = [];
+    const cy = (fys[j] + fys[j + 1]) / 2;
+    for (let i = 0; i < fxs.length - 1; i++) {
+      const cx = (fxs[i] + fxs[i + 1]) / 2;
+      const inQR = cx > qxs[0] && cx < qxs[size] && cy > qys[0] && cy < qys[size];
+      const inText = cx > rectX[0] && cx < rectX[1] && cy > rectV[0] && cy < rectV[1];
+      row.push(inQR || inText ? null : T);
+    }
+    FH.push(row);
+  }
+  for (const t of heightfieldSolid(fxs, fys, FH, 0)) bg.push(t);
+  // textfältet: rektangel med glyf-ytterringar som hål
+  if (lines.length) {
+    const outer = [[rectX[0], rectV[0]], [rectX[1], rectV[0]],
+                   [rectX[1], rectV[1]], [rectX[0], rectV[1]]];
+    const holes = glyphGroups.map(g => g.outer.slice().reverse()); // CCW → CW som hål
+    prismWithHoles(bg, outer, holes, 0, T);
+  }
+  return { bgTris: bg, inkTris: ink, report,
+           qr: { x0: xQR0, y0: vQR0, module: QR_MODULE, size } };
 }
 
 // --------------------------------------------------------------- STL + kontroll
@@ -803,15 +1071,26 @@ if (typeof window !== "undefined") (function () {
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  index: null, glyphs: null,
+  index: null, glyphs: null, qr: null,
   measure: "consumption", zone: "SE",
   yearFrom: null, yearTo: null,
   cap: null, zoom: 1,
   norm: false, normMeasure: "consumption", normZone: "SE2",
+  resolution: "hour", maWindow: 24,
+  showNegTwin: false,
   weekLabels: [1, 26, 52],
   dataCache: new Map(),
-  plate: null, textSolid: null, cfg: null, lastNormFactor: 1,
+  plate: null, textSolid: null, under: null, twinPlate: null,
+  cfg: null, lastNormFactor: 1,
 };
+
+const RES_LABEL = {
+  hour: null, ma: null, day: "DYGNSMEDEL", week: "VECKOMEDEL", month: "MÅNADSMEDEL",
+};
+function resolutionSuffix() {
+  if (state.resolution === "ma") return `GLID ${state.maWindow} H`;
+  return RES_LABEL[state.resolution];
+}
 
 const fmtSw = (x, dec = 1) => x.toLocaleString("sv-SE",
   { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -853,11 +1132,14 @@ function zoneLabel(z) { return z === "SE" ? "Sverige" : z; }
 async function rebuild() {
   const info = measureInfo(state.measure);
   const years = selectedYears();
-  const yearsData = await gatherYearsData(state.measure, state.zone, years);
+  const raw = await gatherYearsData(state.measure, state.zone, years);
+  const yearsData = transformSeries(raw, state.resolution, state.maWindow);
 
   const isPrice = state.measure === "price";
   const cap = isPrice ? state.cap : null;
-  const floor = isPrice ? PRICE_FLOOR : null;
+  // D2 (rev 1): negativa priser KLIPPS till 0 i huvudmodellen (deklarerat,
+  // räknat) och redovisas i negativ-tvillingen i stället för som gropar.
+  const floor = isPrice ? 0 : null;
 
   let normFactor = 1, normNote = null;
   if (state.norm) {
@@ -866,10 +1148,11 @@ async function rebuild() {
     if (missingYears.length) {
       throw new Error(`Referensserien ${refInfo.label} saknar år ${missingYears.join(", ")}`);
     }
-    const refData = await gatherYearsData(state.normMeasure, state.normZone, years);
+    const refRaw = await gatherYearsData(state.normMeasure, state.normZone, years);
+    const refData = transformSeries(refRaw, state.resolution, state.maWindow);
     const vRef = seriesVolume(refData, refInfo.scalePerUnit,
       state.normMeasure === "price" ? state.cap : null,
-      state.normMeasure === "price" ? PRICE_FLOOR : null);
+      state.normMeasure === "price" ? 0 : null);
     const vOwn = seriesVolume(yearsData, info.scalePerUnit, cap, floor);
     if (vOwn <= 0) throw new Error("Egen volym är 0 — kan inte normera");
     normFactor = vRef / vOwn;
@@ -878,32 +1161,67 @@ async function rebuild() {
 
   const cfg = {
     yearsData, scalePerUnit: info.scalePerUnit, zoom: state.zoom,
-    normFactor, cap, floor,
+    normFactor, cap, floor, underT: UNDER_T,
     years: yearsData.map(y => ({ isoYear: y.isoYear, weeks: y.weeks })),
     weekLabels: state.weekLabels,
   };
 
   const plate = buildPlate(cfg);
 
-  // titel: OMRÅDE — MÅTT ÅR [· TAK] [· NORM] [· ZOOM] [· 0-plan]
+  // negativa timmar (efter transform) → tvilling med |negativa|, tak 100 öre
+  let negCount = 0;
+  if (isPrice) for (const yd of yearsData) for (const v of yd.values) if (v !== null && v < 0) negCount++;
+  let twinPlate = null;
+  if (negCount > 0) {
+    const twinData = yearsData.map(yd => ({ isoYear: yd.isoYear, weeks: yd.weeks,
+      values: yd.values.map(v => v === null ? null : (v < 0 ? Math.min(-v, 100) : 0)) }));
+    twinPlate = buildPlate({ ...cfg, yearsData: twinData, cap: null, floor: null,
+                             underT: 0, normFactor: 1 });
+  }
+
+  // titel: OMRÅDE — MÅTT ÅR [· UPPLÖSNING] [· TAK] [· NORM] [· ZOOM]
   const parts = [`${zoneLabel(state.zone)} — ${info.label}`.toUpperCase()];
   parts.push(years.length > 1 ? `${years[0]}–${years[years.length-1]}` : String(years[0]));
+  const resSuf = resolutionSuffix();
+  if (resSuf) parts.push(resSuf);
   if (cap !== null && cap !== undefined) parts.push(`TAK ${cap} ÖRE`);
   if (state.norm) parts.push(`NORM ×${fmtSw(normFactor, 2)}`);
   if (state.zoom !== 1) parts.push(`ZOOM ×${state.zoom}`);
-  if (plate.plinth > 0) parts.push(`0 = +${plate.plinth} MM`);
   cfg.title = parts.join(" · ");
 
   const text = buildTextSolid(cfg, state.glyphs, plate);
 
-  state.plate = plate; state.textSolid = text; state.cfg = cfg;
+  // undersidan: bakgrundsfält + QR + speglad källtext
+  cfg.underLines = [
+    cfg.title,
+    `SKALA ${info.scaleLabel.toUpperCase()}` +
+      (state.zoom !== 1 ? ` × ZOOM ${state.zoom}` : "") +
+      (state.norm ? ` × NORM ${fmtSw(normFactor, 2)}` : ""),
+    "1 MM = 1 TIMME · 1 MM = 1 VECKA",
+    "KÄLLA: NORD POOL / ENTSO-E",
+    "HEDIN.IT/EL3D",
+  ];
+  const under = buildUnderside(cfg, state.glyphs, state.qr, plate);
+
+  state.plate = plate; state.textSolid = text; state.under = under;
+  state.twinPlate = twinPlate; state.negCount = negCount; state.cfg = cfg;
   state.lastNormFactor = normFactor; state.normNote = normNote;
-  updateScene(plate, text);
+  refreshTwinToggle();
+  updateScene();
   updateReadout(plate, text, cfg);
 }
 
+function refreshTwinToggle() {
+  const row = $("negtwin-row");
+  if (row) {
+    row.style.display = state.measure === "price" && state.negCount > 0 ? "" : "none";
+    if (!(state.measure === "price" && state.negCount > 0)) state.showNegTwin = false;
+  }
+}
+
 // ------------------------------------------------------------------ three.js
-let scene, camera, renderer, plateMesh, textMesh, canvasEl, rafPending = false;
+let scene, camera, renderer, canvasEl, rafPending = false;
+let plateMesh, textMesh, underBgMesh, underInkMesh;
 const view = { yaw: -0.6, pitch: 0.9, dist: 320, cx: 96, cy: 60, fitted: false };
 
 function initThree() {
@@ -918,7 +1236,11 @@ function initThree() {
   dir.position.set(-150, -220, 300);
   const dir2 = new THREE.DirectionalLight(0xd8e8ff, 0.25);
   dir2.position.set(200, 150, 120);
-  scene.add(amb, dir, dir2);
+  // underljus så undersidans QR/text kan förhandsgranskas (G6-läxan:
+  // undersidan måste gå att titta på)
+  const dir3 = new THREE.DirectionalLight(0xfff4e0, 0.65);
+  dir3.position.set(60, -80, -260);
+  scene.add(amb, dir, dir2, dir3);
   resize();
   window.addEventListener("resize", resize);
 
@@ -957,12 +1279,20 @@ function meshFromTris(tris, color) {
   return new THREE.Mesh(geo, mat);
 }
 
-function updateScene(plate, text) {
-  if (plateMesh) { scene.remove(plateMesh); plateMesh.geometry.dispose(); }
-  if (textMesh) { scene.remove(textMesh); textMesh.geometry.dispose(); }
+function updateScene() {
+  for (const m of [plateMesh, textMesh, underBgMesh, underInkMesh]) {
+    if (m) { scene.remove(m); m.geometry.dispose(); }
+  }
+  plateMesh = textMesh = underBgMesh = underInkMesh = null;
+  const plate = state.showNegTwin && state.twinPlate ? state.twinPlate : state.plate;
   plateMesh = meshFromTris(plate.tris, 0xc96f4a);
-  textMesh = meshFromTris(text.tris, 0x2f5a8f);
-  scene.add(plateMesh, textMesh);
+  scene.add(plateMesh);
+  if (!state.showNegTwin) {
+    textMesh = meshFromTris(state.textSolid.tris, 0x2f5a8f);
+    underBgMesh = meshFromTris(state.under.bgTris, 0xf3ecd9);
+    underInkMesh = meshFromTris(state.under.inkTris, 0x25313d);
+    scene.add(textMesh, underBgMesh, underInkMesh);
+  }
   view.cx = plate.widthMM / 2; view.cy = plate.depthMM / 2;
   // passa in en gång per modellbygge (inte per vinkel — G4-läxan)
   const diag = Math.hypot(plate.widthMM, plate.depthMM, 80);
@@ -1007,37 +1337,30 @@ function tooltipMove(e) {
 }
 
 const DAY_NAMES = ["mån", "tis", "ons", "tor", "fre", "lör", "sön"];
-function isoWeekStart(y) {
-  const jan4 = new Date(Date.UTC(y, 0, 4));
-  const wd = (jan4.getUTCDay() + 6) % 7;
-  jan4.setUTCDate(jan4.getUTCDate() - wd);
-  return jan4;
-}
 function cellAt(x, y) {
+  const plate = state.showNegTwin && state.twinPlate ? state.twinPlate : state.plate;
   if (x < 0 || x >= DATA_W || y < FRONT_APRON) return null;
   const d = Math.floor(x / 25), hh = Math.floor(x - d * 25);
   if (hh >= 24 || d > 6) return null;
   const r = Math.floor(y - FRONT_APRON);
-  const N = state.plate.nRows;
-  if (r < 0 || r >= N) return null;
-  const c = N - 1 - r;
-  let off = 0;
-  for (const yd of state.cfg.years) {
-    if (c < off + yd.weeks) {
-      const w = c - off + 1;
-      const v = state.cfg.yearsData[state.cfg.years.indexOf(yd)]
-        .values[(w - 1) * 168 + d * 24 + hh];
-      const dt = new Date(isoWeekStart(yd.isoYear));
-      dt.setUTCDate(dt.getUTCDate() + (w - 1) * 7 + d);
-      const ds = dt.toISOString().slice(0, 10);
-      const unit = measureInfo(state.measure).unit;
-      const val = v === null || v === undefined ? "saknas"
-        : `${fmtSw(v, state.measure === "price" ? 1 : 0)} ${unit}`;
-      return `<b>${DAY_NAMES[d]} v${w} ${yd.isoYear}</b> (${ds}) kl ${String(hh).padStart(2,"0")}<br>${val}`;
-    }
-    off += yd.weeks;
-  }
-  return null;
+  const M = plate.nRows;
+  if (r < 0 || r >= M) return null;
+  const meta = plate.rowsMeta[M - 1 - r];
+  if (!meta || meta.gap) return null;               // årsskåra
+  const yd = state.cfg.years[meta.yi];
+  const w = meta.w + 1;
+  let v = state.cfg.yearsData[meta.yi].values[meta.w * 168 + d * 24 + hh];
+  if (state.showNegTwin && v !== null && v !== undefined) v = v < 0 ? -v : 0;
+  const dt = new Date(isoWeek1Monday(yd.isoYear));
+  dt.setUTCDate(dt.getUTCDate() + meta.w * 7 + d);
+  const ds = dt.toISOString().slice(0, 10);
+  const unit = measureInfo(state.measure).unit;
+  const resNote = state.resolution === "hour" ? ""
+    : ` <i>(${(resolutionSuffix() || "").toLowerCase()})</i>`;
+  const val = v === null || v === undefined ? "saknas"
+    : `${fmtSw(v, state.measure === "price" ? 1 : 0)} ${unit}${resNote}` +
+      (state.showNegTwin ? " <i>(negativ, tvilling)</i>" : "");
+  return `<b>${DAY_NAMES[d]} v${w} ${yd.isoYear}</b> (${ds}) kl ${String(hh).padStart(2,"0")}<br>${val}`;
 }
 
 // ------------------------------------------------------------------ readout
@@ -1052,11 +1375,15 @@ function updateReadout(plate, text, cfg) {
   lines.push(`Skala: ${info.scaleLabel}` +
     (state.zoom !== 1 ? ` × zoom ${state.zoom}` : "") +
     (state.norm ? ` × norm ${fmtSw(state.lastNormFactor, 3)} (mot ${state.normNote})` : ""));
-  if (plate.plinth > 0) lines.push(`Sockel ${plate.plinth} mm — nollplanet är apronytan; ` +
-    `negativa timmar är gropar`);
+  if (state.resolution !== "hour") lines.push(`Upplösning: ${resolutionSuffix()}`);
   if (s.capped) lines.push(`${s.capped} timmar kapade i taket (platå)`);
-  if (s.floored) lines.push(`${s.floored} timmar under golvet ${PRICE_FLOOR} öre (kapade)`);
+  if (state.negCount) lines.push(`${state.negCount} timmar med negativt pris — klippta ` +
+    `till 0 i huvudmodellen; se negativ-tvillingen`);
   if (s.missing) lines.push(`${s.missing} saknade timmar (visas på nollplanet)`);
+  lines.push(`Undersida: QR (${fmtSw(QR_MODULE, 2)} mm/modul) + källtext i två ` +
+    `kontrastfärger, 0–${fmtSw(UNDER_T, 1)} mm`);
+  if (state.showNegTwin) lines.push(`<b>Visar negativ-tvillingen</b> — endast ` +
+    `|negativa| priser, samma layout, utan texter`);
   $("readout").innerHTML = lines.map(l => `<div>${l}</div>`).join("");
 
   const rep = text.report.map(b => b.skipped
@@ -1084,8 +1411,15 @@ function foljesedel(plate, text, cfg) {
   L.push(`Exporterad        : ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`);
   L.push("");
   L.push("FILER — IMPORTERA ALLA I SLICERN (samma koordinatsystem, auto-arrange AV):");
-  L.push("  modell.stl  — datasoliden (bas, aproner, sockel, staplar) i datafärg");
-  L.push("  text.stl    — all text (titel, veckodagar, år, veckonummer) i kontrastfärg");
+  L.push("  *_modell.stl       — datasoliden (bas, aproner, staplar), datafärg");
+  L.push("  *_text.stl         — text ovanpå (titel, veckodagar, år, veckor), kontrastfärg 1");
+  L.push(`  *_under_botten.stl — bakgrundsskikt 0–${fmtSw(UNDER_T,1)} mm på HELA undersidan, LJUS färg`);
+  L.push("  *_under_tryck.stl  — QR-kod + källtext på undersidan, MÖRK färg");
+  if (state.negCount) {
+    L.push("  *_negativ_modell.stl — TVILLING: endast |negativa| priser, samma layout,");
+    L.push("      utan texter/undersida. Skrivs ut separat (egen platta).");
+  }
+  L.push("  QR och undersidestext är SPEGLADE i filerna och läses rättvänt underifrån.");
   L.push("");
   L.push("SKALOR (familjeinvarianter — samma i alla exporter):");
   L.push(`  Höjd   : ${info.scaleLabel}`);
@@ -1096,22 +1430,33 @@ function foljesedel(plate, text, cfg) {
     L.push(`  NORM   : ×${fmtSw(state.lastNormFactor, 3)} mot ${state.normNote} — volymerna är`);
     L.push("           lika; absolut höjdskala gäller EJ. Paret jämför form, inte mängd.");
   }
+  if (state.resolution !== "hour") {
+    L.push(`  UPPLÖSNING: ${resolutionSuffix()} — värdena är medelvärden` +
+      (state.resolution === "ma" ? ` (centrerat glidande fönster ${state.maWindow} h)` : "") + ".");
+  }
   L.push("");
   L.push("LAYOUT:");
   L.push("  Raderna är veckor. Tiden växer mot betraktaren: januari år X+1 ligger");
   L.push("  direkt framför december år X; inom ett år ligger v52 främst och v1 bakerst.");
+  L.push("  Årsskiften markeras med en 1 mm skåra i nollplanet (som dygnsskårorna).");
   L.push(`  Fotavtryck ${fmtSw(plate.widthMM,0)} × ${fmtSw(plate.depthMM,0)} mm, maxhöjd ${fmtSw(BASE+plate.plinth+s.maxMM,1)} mm.`);
-  if (plate.plinth > 0) {
-    L.push(`  Sockel ${plate.plinth} mm: nollplanet är apronens OVANSIDA; negativa`);
-    L.push("  spotpristimmar är gropar under nollplanet.");
-  } else {
-    L.push("  Nollplanet är apronens ovansida (basplattans topp, 1,2 mm).");
-  }
+  L.push("  Nollplanet är apronens ovansida (basplattans topp).");
   L.push("");
   L.push("DATADEKLARATIONER:");
   if (cfg.cap !== null && cfg.cap !== undefined)
     L.push(`  Pristak ${cfg.cap} öre/kWh: ${s.capped} timmar kapade till platå (gravyr TAK).`);
-  if (s.floored) L.push(`  Prisgolv ${PRICE_FLOOR} öre/kWh: ${s.floored} timmar kapade.`);
+  if (state.negCount) {
+    L.push(`  Negativa priser: ${state.negCount} timmar — KLIPPTA till 0 i huvudmodellen`);
+    L.push("  (D2-revision 1). Tvillingfilen visar dem som |öre/kWh| i samma skala,");
+    L.push("  tak 100 öre. Ställ tvillingen bakom/bredvid huvudmodellen.");
+  }
+  for (const y of years) {
+    const f = state.dataCache.get(`${state.measure}_${y}`);
+    if (f && f.partial) {
+      L.push(`  År ${y} PÅGÅR: data t.o.m. ${f.dataThrough}; resterande veckor`);
+      L.push("  ligger på nollplanet.");
+    }
+  }
   L.push(`  Saknade timmar: ${s.missing} (visas på nollplanet). DST: vårens timme`);
   L.push("  saknas; höstens dubbeltimme är medelvärdesbildad (spotpris: första).");
   if (state.zone === "SE" && state.measure === "price") L.push("  " + idx.declarations.SE_price);
@@ -1119,15 +1464,23 @@ function foljesedel(plate, text, cfg) {
   L.push("  " + idx.declarations.weeks);
   L.push("  " + idx.declarations.sources);
   L.push("");
+  L.push("UNDERSIDA:");
+  L.push(`  QR: ${state.qr.url} — v${state.qr.version}, ${state.qr.size}×${state.qr.size} moduler à ${fmtSw(QR_MODULE,2)} mm`);
+  L.push("  (golv 1,25). Kvietzon = bakgrundsskiktets egen färg. Skanna underifrån.");
+  L.push("  VÄLJ FÄRGER PÅ LUMINANS: ljust bakgrundsskikt + mörkt tryck (eller");
+  L.push("  omvänt), matt filament — kulörkontrast räcker inte (praxis §2.4b).");
+  L.push("");
   L.push("TEXTBLOCK (versalhöjdsgolv 2,2 mm):");
-  for (const b of text.report) {
+  for (const b of [...text.report, ...(state.under ? state.under.report : [])]) {
     L.push(b.skipped ? `  ${b.name}: HOPPAD (${b.skipped})`
-      : `  ${b.name}: "${b.text}" versal ${fmtSw(b.capMM,2)} mm`);
+      : b.capMM ? `  ${b.name}: "${b.text}" versal ${fmtSw(b.capMM,2)} mm`
+      : `  ${b.name}: "${b.text}" (${fmtSw(b.qrModuleMM,2)} mm/modul, ${fmtSw(b.symbolMM,1)} mm symbol)`);
   }
   L.push("");
-  L.push("UTSKRIFT: stående som den är; texten ligger 1,0 mm ovanpå apronytan och");
-  L.push("0,2 mm inbäddad. Två filament: datafärg + kontrastfärg (matt, ljus bas");
-  L.push("och mörk text eller omvänt — luminanskontrast, inte bara kulörkontrast).");
+  L.push("UTSKRIFT: stående som den är; toppen 1,0 mm ovanpå apronytan (0,2 mm");
+  L.push(`inbäddad), undersidan flush i skiktet 0–${fmtSw(UNDER_T,1)} mm mot byggplattan —`);
+  L.push("använd SLÄT platta, inte texturerad (QR:n trycks mot den). Fyra filament:");
+  L.push("datafärg, toppkontrast, ljus undersidesbotten, mörkt undersidestryck.");
   L.push("");
   L.push("Genererad av sweden_electricity-tvillingen (WYSIWYG: vyn och STL:en byggs");
   L.push("av samma kod). Designgrammatik: se Om & metod i webbappen samt SPEC.md.");
@@ -1139,24 +1492,34 @@ async function doExport() {
   btn.disabled = true; btn.textContent = "Kontrollerar…";
   try {
     await rebuild(); // exportera exakt det som visas
-    const plate = state.plate, text = state.textSolid;
-    const cp = checkSolid(plate.tris);
-    const ct = checkSolid(text.tris);
-    if (!cp.watertight || cp.volumeMM3 <= 0) {
-      throw new Error(`Modellsoliden ej vattentät (${cp.badEdges} oparade kanter, ` +
-        `volym ${fmtSw(cp.volumeMM3, 0)} mm³) — export vägrad`);
-    }
-    if (!ct.watertight || ct.volumeMM3 <= 0) {
-      throw new Error(`Textsoliden ej vattentät (${ct.badEdges} oparade kanter) — export vägrad`);
+    const plate = state.plate, text = state.textSolid, under = state.under;
+    const solids = [
+      ["modellsoliden", plate.tris], ["textsoliden", text.tris],
+      ["undersidesbottnen", under.bgTris], ["undersidestrycket", under.inkTris],
+    ];
+    if (state.twinPlate) solids.push(["negativ-tvillingen", state.twinPlate.tris]);
+    for (const [name, tris] of solids) {
+      const c = checkSolid(tris);
+      if (!c.watertight || c.volumeMM3 <= 0) {
+        throw new Error(`${name} ej vattentät (${c.badEdges} oparade kanter, ` +
+          `volym ${fmtSw(c.volumeMM3, 0)} mm³) — export vägrad`);
+      }
     }
     const years = selectedYears();
     const tag = `${state.measure}_${zoneLabel(state.zone)}_${years[0]}` +
       (years.length > 1 ? `-${years[years.length-1]}` : "");
-    const zip = makeZip([
+    const files = [
       { name: `${tag}_modell.stl`, data: trisToBinarySTL(plate.tris, tag) },
       { name: `${tag}_text.stl`, data: trisToBinarySTL(text.tris, tag + "_text") },
-      { name: "FOLJESEDEL.txt", data: foljesedel(plate, text, state.cfg) },
-    ]);
+      { name: `${tag}_under_botten.stl`, data: trisToBinarySTL(under.bgTris, tag + "_ub") },
+      { name: `${tag}_under_tryck.stl`, data: trisToBinarySTL(under.inkTris, tag + "_ut") },
+    ];
+    if (state.twinPlate) {
+      files.push({ name: `${tag}_negativ_modell.stl`,
+                   data: trisToBinarySTL(state.twinPlate.tris, tag + "_neg") });
+    }
+    files.push({ name: "FOLJESEDEL.txt", data: foljesedel(plate, text, state.cfg) });
+    const zip = makeZip(files);
     const blob = new Blob([zip], { type: "application/zip" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1172,11 +1535,15 @@ async function doExport() {
 }
 
 // ----------------------------------------------------------------------- UI
+function yearOpt(y) {
+  const p = y === state.index.partialYear ? " (pågår)" : "";
+  return `<option value="${y}">${y}${p}</option>`;
+}
 function fillYearSelects() {
   const info = measureInfo(state.measure);
   const years = info.years;
   const from = $("year-from"), to = $("year-to");
-  from.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join("");
+  from.innerHTML = years.map(yearOpt).join("");
   const def = years[years.length - 1];
   if (!years.includes(state.yearFrom)) state.yearFrom = def;
   if (!years.includes(state.yearTo) || state.yearTo < state.yearFrom) state.yearTo = state.yearFrom;
@@ -1187,7 +1554,7 @@ function refreshToSelect() {
   const info = measureInfo(state.measure);
   const to = $("year-to");
   const opts = info.years.filter(y => y >= state.yearFrom);
-  to.innerHTML = opts.map(y => `<option value="${y}">${y}</option>`).join("");
+  to.innerHTML = opts.map(yearOpt).join("");
   if (!opts.includes(state.yearTo)) state.yearTo = state.yearFrom;
   to.value = state.yearTo;
   const n = state.yearTo - state.yearFrom + 1;
@@ -1238,6 +1605,21 @@ function bindUI() {
       .filter(n => Number.isFinite(n) && n >= 1 && n <= 53);
     await onChange();
   });
+  $("resolution").addEventListener("change", async (e) => {
+    state.resolution = e.target.value;
+    $("ma-row").style.display = state.resolution === "ma" ? "" : "none";
+    await onChange();
+  });
+  $("ma-window").addEventListener("change", async (e) => {
+    state.maWindow = Math.max(2, Math.min(2000, parseInt(e.target.value, 10) || 24));
+    e.target.value = state.maWindow;
+    await onChange();
+  });
+  $("negtwin").addEventListener("change", async (e) => {
+    state.showNegTwin = e.target.checked;
+    updateScene();
+    updateReadout(state.plate, state.textSolid, state.cfg);
+  });
   $("export-btn").addEventListener("click", doExport);
   $("about-btn").addEventListener("click", () => {
     $("about").style.display = $("about").style.display === "none" ? "block" : "none";
@@ -1249,6 +1631,7 @@ async function main() {
   try {
     state.glyphs = await fetchJSON("glyphs.json");
     state.index = await fetchJSON("data/index.json");
+    state.qr = await fetchJSON("qr.json");
   } catch (err) {
     $("error").textContent = "Kunde inte läsa data. Kör via en webbserver " +
       "(t.ex. python -m http.server i site/) — file:// fungerar inte. " + err;

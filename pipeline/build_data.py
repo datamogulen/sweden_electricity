@@ -26,14 +26,15 @@ from zoneinfo import ZoneInfo
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE.parent / "site" / "data"
-DB = Path.home() / "Development/hedin.it_backup/public_html/spotpriser_data/spotprices.sqlite"
-CACHE = Path.home() / "Development/hedin.it_backup/public_html/entsoe/cache"
+DB = HERE.parent / "data_src" / "spotprices.sqlite"
+CACHE = HERE.parent / "data_src" / "entsoe" / "cache"
 TZ = ZoneInfo("Europe/Stockholm")
 
 ZONES = ["SE1", "SE2", "SE3", "SE4"]
-PRICE_YEARS = range(2008, 2026)        # hela ISO-år med spotpris
-CONS_YEARS = range(2015, 2026)         # hela ISO-år med förbrukning
-PROD_YEARS = range(2022, 2026)         # per-kraftslag komplett först 2022 (SPEC §4)
+CUR_ISO_YEAR = date.today().isocalendar()[0]   # pågående år tas med som partiellt
+PRICE_YEARS = range(2008, CUR_ISO_YEAR + 1)    # hela ISO-år med spotpris
+CONS_YEARS = range(2015, CUR_ISO_YEAR + 1)     # hela ISO-år med förbrukning
+PROD_YEARS = range(2022, CUR_ISO_YEAR + 1)     # per-kraftslag komplett först 2022 (SPEC §4)
 
 
 def iso_weeks_in_year(y: int) -> int:
@@ -179,10 +180,14 @@ def twh(series):
 
 def validate(price_files, cons_files, prod_files):
     for y, zs in cons_files.items():
+        if y == CUR_ISO_YEAR:
+            continue                     # pågående år valideras inte mot årssummor
         t = twh(zs["SE"])
         if not (120 <= t <= 160):
             refuse(f"förbrukning {y}: {t:.1f} TWh utanför 120–160")
     for y, zs in prod_files.items():
+        if y == CUR_ISO_YEAR:
+            continue
         t = twh(zs["SE"])
         if not (130 <= t <= 180):
             refuse(f"produktion {y}: {t:.1f} TWh utanför 130–180")
@@ -190,15 +195,39 @@ def validate(price_files, cons_files, prod_files):
     m = sum(se3) / len(se3)
     if abs(m - 137.9) > 0.7:
         refuse(f"SE3-medel 2022 = {m:.1f}, väntat 137,9 ± 0,7")
+    # pågående år: kräver data fram till minst 3 dygn före idag (spärr mot
+    # tyst stannad uppdatering)
+    for name, files in [("spotpris", price_files), ("förbrukning", cons_files),
+                        ("produktion", prod_files)]:
+        zs = files.get(CUR_ISO_YEAR)
+        if zs is None:
+            continue
+        last = last_data_date(zs["SE"], CUR_ISO_YEAR)
+        if last is None or (date.today() - last).days > 3:
+            refuse(f"{name} {CUR_ISO_YEAR}: data slutar {last} (> 3 dygn gammalt)")
     # täckning: hela år ska ha < 3 % saknade timmar (kantveckor undantagna nedan)
     for name, files in [("spotpris", price_files), ("förbrukning", cons_files),
                         ("produktion", prod_files)]:
         for y, zs in files.items():
+            if y == CUR_ISO_YEAR:
+                continue
             for z, s in zs.items():
                 miss = sum(1 for v in s if v is None)
                 if miss / len(s) > 0.03 and not (name != "spotpris" and y == 2015):
                     refuse(f"{name} {y} {z}: {miss} saknade timmar (> 3 %)")
     print("Validering: OK")
+
+
+def last_data_date(series, iso_year):
+    """Sista dygn med data i en plattarray för ett ISO-år."""
+    last = None
+    start = iso_year_start(iso_year)
+    for i, v in enumerate(series):
+        if v is not None:
+            last = i
+    if last is None:
+        return None
+    return start + timedelta(days=last // 24)
 
 
 # ---------------------------------------------------------------- skrivning
@@ -210,6 +239,9 @@ def write_files(measure, unit, files):
             "unit": unit,
             "isoYear": y,
             "weeks": iso_weeks_in_year(y),
+            "partial": y == CUR_ISO_YEAR,
+            "dataThrough": (last_data_date(zs["SE"], y).isoformat()
+                            if y == CUR_ISO_YEAR and last_data_date(zs["SE"], y) else None),
             "missing": {z: sum(1 for v in s if v is None) for z, s in zs.items()},
             "zones": zs,
         }
@@ -272,6 +304,7 @@ def main():
             },
         },
         "zones": ["SE"] + ZONES,
+        "partialYear": CUR_ISO_YEAR,
         "declarations": {
             "SE_price": "Sveriges spotpris = förbrukningsviktat medel av SE1–SE4 "
                         "(timvikter ur ENTSO-E-lasten) fr.o.m. 2015; aritmetiskt "
