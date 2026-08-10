@@ -122,8 +122,10 @@ Avsteg (zoom, volymnormering, pristak, sockel) graveras på objektet.
 SFTP (shell avstängt på kontot), nyckel `~/.ssh/hedin_deploy`:
 
 ```bash
+# OBS: -x ^data/ — servern är kanonisk för datan (byggs där av panel-cronen);
+# spegla ALDRIG över den med lokal data.
 lftp -e "set sftp:connect-program 'ssh -a -x -i ~/.ssh/hedin_deploy -o IdentitiesOnly=yes -o BatchMode=yes'; \
-  open sftp://bjornh:@hedin.it:22; mirror -R site public_html/el3d; bye"
+  open sftp://bjornh:@hedin.it:22; mirror -R -x ^data/ site public_html/el3d; bye"
 ```
 
 `site/.htaccess` sätter `Cache-Control: no-cache, must-revalidate` för
