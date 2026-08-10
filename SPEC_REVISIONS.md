@@ -54,6 +54,26 @@ Aggregeringen slätar timtopparna (artikelns D6-exempel) och graveras
 därför på objektet (GLID 24 H, DYGNSMEDEL, …); appliceras även på
 normeringsreferensen och tvillingen. Saknade timmar förblir saknade.
 
+## Revision 9 — konfigurationsbärande QR + URL-tillstånd (2026-08-10)
+
+**Beställarens fråga:** "är QR-koden gjord så man får exakt den vy man har
+när man skriver ut?" — den var statisk. Nu:
+
+1. **Kompakt tillståndskod** (versal-alfanumerisk, QR-vänlig):
+   `SFI.22-24.D.C300` = spotpris Finland 2022–2024, dygnsmedel, tak 300.
+   Koden är sidans #hash (delbar länk, uppdateras live) och QR-payloaden:
+   `HTTPS://HEDIN.IT/R/EL3D/<KOD>` → r/-tabellen vidarebefordrar koden som
+   #fragment → appen återställer exakt vyn. Typisk export = QR v2 (25×25
+   à 1,4 mm); spärrar för payload > v5, tecken utanför alfanumeriska
+   läget, och symbol som inte ryms på undersidan.
+2. **QR-genereringen flyttad till STL-CORE** (payloaden varierar per
+   export): egen kodare, ECC L, v1–v5, straffreglerad maskning.
+   Verifieras i Node-testet genom RIKTIG avkodning med OpenCV
+   (`test/decode_qr.py`) för v1/v2/v3-payloads + känt-dåligt (förstört
+   sökmönster). Oraklet fångade direkt ett äkta fel i Reed-Solomon-
+   generatorn under utvecklingen — beviset för att avkodnings-oraklet
+   behövs. `pipeline/make_qr.py`/`site/qr.json` utgår.
+
 ## Revision 8 — outlier-screening + totalpris för länderna (2026-08-10)
 
 1. **Outlier-screening av förbrukningsdata** (beställaren upptäckte SE2

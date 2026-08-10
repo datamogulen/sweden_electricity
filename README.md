@@ -37,8 +37,9 @@ Delsteg: `update_spot.py` (mgrey.se/espot — Vattenfalls gamla API är dött,
 403), `fetch_cache.py` (ENTSO-E, token i `data_src/entsoe_token.txt` — får
 ALDRIG committas), `build_data.py` (foldning + validering; **vägrar** vid
 brott: årssummor i TWh, SE3-medel 2022, täckning, data äldre än 3 dygn för
-pågående år). Engångssteg: `extract_glyphs.py` (font), `make_qr.py`
-(QR-matris, verifierad genom riktig avkodning med cv2).
+pågående år). Engångssteg: `extract_glyphs.py` (font). QR-koden genereras i körtid av
+appen (payload = exportens konfiguration) och verifieras i Node-testet
+genom riktig cv2-avkodning (`test/decode_qr.py`).
 
 ## Test
 
@@ -74,12 +75,15 @@ av): `*_modell.stl` (datafärg), `*_text.stl` (toppkontrast),
 `*_negativ_modell.stl` (tvillingen) när urvalet har negativa priser, och
 `FOLJESEDEL.txt` med exportens hela tillstånd. Exporten vägrar om någon
 solid inte är vattentät eller text hamnar under 2,2 mm versalhöjd.
-Undersidans QR: `HTTPS://HEDIN.IT/R/EL3D` (23 tecken = QR v1; sökvägsform
-i stället för `?p=` som hade spräckt versionsgränsen) — går via sajtens
-befintliga centrala redirect-tabell `r/index.php` (en rad per projekt,
-ompekbar utan omtryck; versioneras i hedin_cleanup-repot, som nu även har
-sökvägsformen + `r/.htaccess`). Appen själv deployas på `hedin.it/el3d/`
-— den läsbara undersidestexten pekar dit direkt.
+Undersidans QR bär **exakt den exporterade vyn**:
+`HTTPS://HEDIN.IT/R/EL3D/<KOD>` där koden är exportens konfiguration
+(t.ex. `SFI.22-24.D.C300` = spotpris Finland 2022–2024, dygnsmedel,
+tak 300) — samma kod som sidans #hash och den delbara länken. Typisk
+export = QR v2 (25×25 moduler à 1,4 mm); bygget vägrar bortom v5 eller om
+symbolen inte ryms. Redirecten går via sajtens centrala tabell
+`r/index.php` (sökvägsform, konfigurationen vidarebefordras som #fragment;
+versioneras i hedin_cleanup-repot med `r/.htaccess`). Appen deployas på
+`hedin.it/el3d/` — den läsbara undersidestexten pekar dit direkt.
 
 ## Deklarerade skalor (familjeinvarianter)
 

@@ -973,6 +973,269 @@ function buildUnderside(cfg, glyphData, qrData, plate) {
            qr: { x0: xQR0, y0: vQR0, module: QR_MODULE, size } };
 }
 
+// ----------------------------------------------------------- QR-kodare (rev 9)
+// Genererar QR-matrisen i körtid — payloaden bär exportens konfiguration
+// (praxis: tryckta koder via ompekbar redirect + korta parameteralias).
+// Alfanumeriskt läge, ECC L, version 1–5 (25/47/77/114/154 tecken),
+// masker väljs med standardens straffregler. Verifieras genom AVKODNING
+// (cv2 i Node-testet) — inte genom att titta på koden.
+const QR_ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+const QR_VER = [ // [version, alnumKapacitet, dataCodewords, eccCodewords, alignPos]
+  [1, 25, 19, 7, []], [2, 47, 34, 10, [6, 18]], [3, 77, 55, 15, [6, 22]],
+  [4, 114, 80, 20, [6, 26]], [5, 154, 108, 26, [6, 30]],
+];
+
+const GF_EXP = new Array(512), GF_LOG = new Array(256);
+{
+  let x = 1;
+  for (let i = 0; i < 255; i++) {
+    GF_EXP[i] = x; GF_LOG[x] = i;
+    x <<= 1;
+    if (x & 0x100) x ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+}
+function rsEcc(data, n) {
+  let gen = [1];
+  for (let i = 0; i < n; i++) {
+    // multiplikation med (x + a^i), MSB-först: ×x skiftar index, ×a^i läggs på nästa
+    const next = new Array(gen.length + 1).fill(0);
+    for (let j = 0; j < gen.length; j++) {
+      next[j] ^= gen[j];
+      next[j + 1] ^= gen[j] === 0 ? 0 : GF_EXP[(GF_LOG[gen[j]] + i) % 255];
+    }
+    gen = next;
+  }
+  const res = data.concat(new Array(n).fill(0));
+  for (let i = 0; i < data.length; i++) {
+    const c = res[i];
+    if (c === 0) continue;
+    const l = GF_LOG[c];
+    for (let j = 0; j < gen.length; j++) {
+      res[i + j] ^= gen[j] === 0 ? 0 : GF_EXP[(GF_LOG[gen[j]] + l) % 255];
+    }
+  }
+  return res.slice(data.length);
+}
+
+function qrEncode(text) {
+  for (const ch of text) {
+    if (QR_ALNUM.indexOf(ch) < 0) {
+      throw new Error(`BYGGSPÄRR: "${ch}" finns inte i QR:s alfanumeriska läge`);
+    }
+  }
+  const spec = QR_VER.find(v => text.length <= v[1]);
+  if (!spec) throw new Error(`BYGGSPÄRR: QR-payload ${text.length} tecken > v5-gränsen 154`);
+  const [ver, , nData, nEcc, alignPos] = spec;
+  const size = 17 + 4 * ver;
+
+  // --- bitström: läge 0010, längd (9 bitar), par om 11 bitar ---
+  const bits = [];
+  const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  push(2, 4);
+  push(text.length, 9);
+  for (let i = 0; i + 1 < text.length; i += 2) {
+    push(QR_ALNUM.indexOf(text[i]) * 45 + QR_ALNUM.indexOf(text[i + 1]), 11);
+  }
+  if (text.length % 2) push(QR_ALNUM.indexOf(text[text.length - 1]), 6);
+  const cap = nData * 8;
+  push(0, Math.min(4, cap - bits.length));
+  while (bits.length % 8) bits.push(0);
+  const padB = [0xec, 0x11];
+  let pi = 0;
+  while (bits.length < cap) push(padB[(pi++) % 2], 8);
+  const data = [];
+  for (let i = 0; i < cap; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+    data.push(b);
+  }
+  const codewords = data.concat(rsEcc(data, nEcc));
+
+  // --- matris: null = ledig, 0/1 = funktionsmönster ---
+  const M = Array.from({ length: size }, () => new Array(size).fill(null));
+  const setF = (r, c, v) => { if (r >= 0 && r < size && c >= 0 && c < size) M[r][c] = v; };
+  const finder = (r0, c0) => {
+    for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+      const inF = r >= 0 && r <= 6 && c >= 0 && c <= 6;
+      const dark = inF && (r === 0 || r === 6 || c === 0 || c === 6 ||
+                           (r >= 2 && r <= 4 && c >= 2 && c <= 4));
+      setF(r0 + r, c0 + c, dark ? 1 : 0);
+    }
+  };
+  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+  for (let i = 8; i < size - 8; i++) {
+    const v = i % 2 === 0 ? 1 : 0;
+    if (M[6][i] === null) M[6][i] = v;
+    if (M[i][6] === null) M[i][6] = v;
+  }
+  for (const ar of alignPos) for (const ac of alignPos) {
+    if (M[ar][ac] !== null) continue; // krockar med sökmönster
+    for (let r = -2; r <= 2; r++) for (let c = -2; c <= 2; c++) {
+      setF(ar + r, ac + c,
+        (Math.max(Math.abs(r), Math.abs(c)) !== 1) ? 1 : 0);
+    }
+  }
+  M[size - 8][8] = 1; // mörk modul
+  // reservera formatfälten
+  const fmtCells = [];
+  for (let i = 0; i <= 8; i++) {
+    if (i !== 6) { fmtCells.push([8, i]); fmtCells.push([i, 8]); }
+  }
+  fmtCells.push([8, 7], [8, 8], [7, 8]);
+  for (let i = 0; i < 8; i++) { fmtCells.push([8, size - 1 - i]); fmtCells.push([size - 1 - i, 8]); }
+  const fmtSet = new Set(fmtCells.map(([r, c]) => r + "," + c));
+  for (const [r, c] of fmtCells) if (M[r][c] === null) M[r][c] = 0;
+
+  // --- dataplacering (zigzag) ---
+  const path = [];
+  let up = true;
+  for (let col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;
+    for (let i = 0; i < size; i++) {
+      const r = up ? size - 1 - i : i;
+      for (const c of [col, col - 1]) {
+        if (M[r][c] === null && !fmtSet.has(r + "," + c)) path.push([r, c]);
+      }
+    }
+    up = !up;
+  }
+  const totalBits = codewords.length * 8;
+  const dataBits = [];
+  for (const cw of codewords) for (let i = 7; i >= 0; i--) dataBits.push((cw >> i) & 1);
+  while (dataBits.length < path.length) dataBits.push(0); // restbitar
+
+  const MASKS = [
+    (r, c) => (r + c) % 2 === 0, (r, c) => r % 2 === 0, (r, c) => c % 3 === 0,
+    (r, c) => (r + c) % 3 === 0, (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
+    (r, c) => ((r * c) % 2 + (r * c) % 3) === 0,
+    (r, c) => (((r * c) % 2 + (r * c) % 3) % 2) === 0,
+    (r, c) => (((r + c) % 2 + (r * c) % 3) % 2) === 0,
+  ];
+  function buildWithMask(m) {
+    const G = M.map(row => row.slice());
+    path.forEach(([r, c], i) => {
+      let v = dataBits[i];
+      if (MASKS[m](r, c)) v ^= 1;
+      G[r][c] = v;
+    });
+    // formatinfo: ECC L (01) + mask, BCH + XOR-mask
+    let fmt = (1 << 3) | m; // L = 01 -> bits '01'+mask; värdet 0b01mmm
+    let rem = fmt << 10;
+    const g = 0b10100110111;
+    for (let i = 14; i >= 10; i--) if ((rem >> i) & 1) rem ^= g << (i - 10);
+    const f = ((fmt << 10) | rem) ^ 0b101010000010010;
+    const fb = [];
+    for (let i = 14; i >= 0; i--) fb.push((f >> i) & 1);
+    const put = (r, c, v) => { G[r][c] = v; };
+    // kopia 1 runt övre vänstra sökmönstret
+    const pos1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+    pos1.forEach(([r, c], i) => put(r, c, fb[i]));
+    // kopia 2: nedre vänstra + övre högra
+    for (let i = 0; i < 7; i++) put(size - 1 - i, 8, fb[i]);
+    for (let i = 7; i < 15; i++) put(8, size - 15 + i, fb[i]);
+    return G;
+  }
+  function penalty(G) {
+    let p = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let r = 0; r < size; r++) {
+        let run = 1;
+        for (let c = 1; c <= size; c++) {
+          const cur = c < size ? (pass ? G[c][r] : G[r][c]) : -1;
+          const prev = pass ? G[c - 1][r] : G[r][c - 1];
+          if (c < size && cur === prev) run++;
+          else { if (run >= 5) p += 3 + (run - 5); run = 1; }
+        }
+      }
+    }
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++) {
+      if (G[r][c] === G[r][c + 1] && G[r][c] === G[r + 1][c] && G[r][c] === G[r + 1][c + 1]) p += 3;
+    }
+    const pat1 = [1,0,1,1,1,0,1,0,0,0,0], pat2 = [0,0,0,0,1,0,1,1,1,0,1];
+    for (let pass = 0; pass < 2; pass++) {
+      for (let r = 0; r < size; r++) for (let c = 0; c + 11 <= size; c++) {
+        let m1 = true, m2 = true;
+        for (let i = 0; i < 11; i++) {
+          const v = pass ? G[c + i][r] : G[r][c + i];
+          if (v !== pat1[i]) m1 = false;
+          if (v !== pat2[i]) m2 = false;
+        }
+        if (m1 || m2) p += 40;
+      }
+    }
+    let dark = 0;
+    for (const row of G) for (const v of row) dark += v;
+    p += Math.floor(Math.abs((dark * 100) / (size * size) - 50) / 5) * 10;
+    return p;
+  }
+  let best = null, bestP = Infinity;
+  for (let m = 0; m < 8; m++) {
+    const G = buildWithMask(m);
+    const pp = penalty(G);
+    if (pp < bestP) { bestP = pp; best = G; }
+  }
+  return { url: text, version: ver, size, matrix: best, ecc: "L" };
+}
+
+// ------------------------------------------- konfigurationskod i URL/QR (rev 9)
+// Kompakt, versalt, alfanumeriskt: "SSE.24.C300" = spotpris Sverige 2024 tak
+// 300. Bärs i sidans #hash, i delbara länkar och i den tryckta QR-koden via
+// hedin.it/r/EL3D/<KOD> — exakt vyn som skrevs ut.
+const CFG_MEASURE = { consumption: "F", production: "P", price: "S", cost: "K", totalpris: "T" };
+const CFG_ZONE = { SE: "SE", SE1: "S1", SE2: "S2", SE3: "S3", SE4: "S4",
+                   FI: "FI", DELU: "DE", FR: "FR" };
+const CFG_RES = { day: "D", week: "V", month: "M", year: "A" };
+
+function encodeConfig(s) {
+  const inv = (o, v) => Object.keys(o).find(k => o[k] === v);
+  let code = CFG_MEASURE[s.measure] + CFG_ZONE[s.zone] + ".";
+  code += String(s.yearFrom).slice(2);
+  if (s.yearTo !== s.yearFrom) code += "-" + String(s.yearTo).slice(2);
+  if (s.resolution === "ma") code += ".G" + s.maWindow;
+  else if (CFG_RES[s.resolution]) code += "." + CFG_RES[s.resolution];
+  if (s.cap !== null && s.cap !== undefined) code += ".C" + s.cap;
+  if (s.zoom !== 1) code += ".Z" + s.zoom;
+  if (s.norm) code += ".N" + CFG_MEASURE[s.normMeasure] + CFG_ZONE[s.normZone];
+  if (!s.realPrices) code += ".L";
+  if (s.measure === "totalpris" && s.priceCategory !== "DE") code += ".B" + s.priceCategory.slice(1);
+  return code;
+}
+
+function decodeConfig(code) {
+  const inv = (o, v) => Object.keys(o).find(k => o[k] === v);
+  const segs = String(code || "").toUpperCase().split(".").filter(Boolean);
+  if (segs.length < 2) return null;
+  const out = {};
+  const m = inv(CFG_MEASURE, segs[0][0]);
+  const z = inv(CFG_ZONE, segs[0].slice(1, 3));
+  if (!m || !z) return null;
+  out.measure = m; out.zone = z;
+  const ym = segs[1].match(/^(\d{2})(?:-(\d{2}))?$/);
+  if (!ym) return null;
+  out.yearFrom = 2000 + +ym[1];
+  out.yearTo = ym[2] ? 2000 + +ym[2] : out.yearFrom;
+  out.resolution = "hour"; out.cap = null; out.zoom = 1;
+  out.norm = false; out.realPrices = true; out.priceCategory = "DE";
+  for (const t of segs.slice(2)) {
+    if (t === "D") out.resolution = "day";
+    else if (t === "V") out.resolution = "week";
+    else if (t === "M") out.resolution = "month";
+    else if (t === "A") out.resolution = "year";
+    else if (t === "L") out.realPrices = false;
+    else if (/^G\d+$/.test(t)) { out.resolution = "ma"; out.maWindow = +t.slice(1); }
+    else if (/^C\d+$/.test(t)) out.cap = +t.slice(1);
+    else if (/^Z\d+$/.test(t)) out.zoom = +t.slice(1);
+    else if (/^B[A-E]$/.test(t)) out.priceCategory = "D" + t[1];
+    else if (/^N..[A-Z0-9]$/.test(t) || /^N.../.test(t)) {
+      const nm = inv(CFG_MEASURE, t[1]);
+      const nz = inv(CFG_ZONE, t.slice(2, 4));
+      if (nm && nz) { out.norm = true; out.normMeasure = nm; out.normZone = nz; }
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------- spegling + nedåtstaplar
 // Spegla en triangelsoppa i x (x → W−x) med bevarad utåtriktning (vindningen
 // vänds). Används för negativ-tvillingens limningsläge: efter fysisk vändning
@@ -1169,6 +1432,8 @@ function resolutionSuffix() {
 
 const fmtSw = (x, dec = 1) => x.toLocaleString("sv-SE",
   { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+const QR_BASE = "HTTPS://HEDIN.IT/R/EL3D";
 
 async function fetchJSON(url) {
   const r = await fetch(url, { cache: "no-cache" });
@@ -1416,12 +1681,18 @@ async function rebuild() {
       ? (isCountry(state.zone) ? "KÄLLA: ENTSO-E / EUROSTAT / ECB" : "KÄLLA: NORD POOL / SCB")
       : "KÄLLA: NORD POOL / ENTSO-E",
     "HEDIN.IT/EL3D");
-  const under = buildUnderside(cfg, state.glyphs, state.qr, plate);
+  // QR bär exakt denna konfiguration (rev 9): ompekbar via r/-tabellen,
+  // resten av sökvägen blir sidans #hash
+  const qrData = qrEncode(QR_BASE + "/" + encodeConfig(state));
+  const under = buildUnderside(cfg, state.glyphs, qrData, plate);
+  state.qrRuntime = qrData;
 
   state.plate = plate; state.textSolid = text; state.under = under;
   state.twinPlate = twinPlate; state.negBars = negBars;
   state.negCount = negCount; state.cfg = cfg; state.notes = notes;
   state.lastNormFactor = normFactor; state.normNote = normNote;
+  // delbar länk: samma kod i #hash som i den tryckta QR-koden
+  try { history.replaceState(null, "", "#" + encodeConfig(state)); } catch (e) {}
   refreshTwinToggle();
   updateScene();
   updateReadout(plate, text, cfg);
@@ -1625,6 +1896,8 @@ function updateReadout(plate, text, cfg) {
   if (state.negCount) lines.push(`${state.negCount} timmar negativa — nedåtstaplar ` +
     `digitalt; i utskrift klippta till 0 + egen tvilling-STL`);
   if (s.missing) lines.push(`${s.missing} saknade timmar (visas på nollplanet)`);
+  lines.push(`Länk & QR (exakt denna vy): hedin.it/r/EL3D/${encodeConfig(state)} ` +
+    `(QR v${state.qrRuntime.version}, ${state.qrRuntime.size}×${state.qrRuntime.size})`);
   if (state.showNegTwin) lines.push(`<b>Visar negativ-tvillingen</b>` +
     (state.twinMirror ? ` (speglad för limning mot undersidan)` : ``));
   $("readout").innerHTML = lines.map(l => `<div>${l}</div>`).join("");
@@ -1746,8 +2019,12 @@ function foljesedel(plate, text, cfg) {
   L.push("  " + idx.declarations.sources);
   L.push("");
   L.push("UNDERSIDA:");
-  L.push(`  QR: ${state.qr.url} — v${state.qr.version}, ${state.qr.size}×${state.qr.size} moduler à ${fmtSw(QR_MODULE,2)} mm`);
-  L.push("  (golv 1,25). Kvietzon = bakgrundsskiktets egen färg. Skanna underifrån.");
+  const qrr = state.qrRuntime;
+  L.push(`  QR: ${qrr.url}`);
+  L.push(`  — öppnar EXAKT denna vy (koden efter /EL3D/ är konfigurationen och`);
+  L.push(`  kan även skrivas som hedin.it/el3d/#${encodeConfig(state)}).`);
+  L.push(`  v${qrr.version}, ${qrr.size}×${qrr.size} moduler à ${fmtSw(QR_MODULE,2)} mm (golv 1,25).`);
+  L.push("  Kvietzon = bakgrundsskiktets egen färg. Skanna underifrån.");
   L.push("  VÄLJ FÄRGER PÅ LUMINANS: ljust bakgrundsskikt + mörkt tryck (eller");
   L.push("  omvänt), matt filament — kulörkontrast räcker inte (praxis §2.4b).");
   L.push("");
@@ -1953,7 +2230,6 @@ async function main() {
   try {
     state.glyphs = await fetchJSON("glyphs.json");
     state.index = await fetchJSON("data/index.json");
-    state.qr = await fetchJSON("qr.json");
     state.scb = await fetchJSON("data/scb.json");
   } catch (err) {
     $("error").textContent = "Kunde inte läsa data. Kör via en webbserver " +
@@ -1992,13 +2268,36 @@ async function main() {
   $("norm-zone").innerHTML = zoneOpts;
   $("norm-measure").innerHTML = mSel.innerHTML;
   $("norm-zone").value = state.normZone;
+  // återställ vy från #hash (delad länk eller skannad QR via r/EL3D/<kod>)
+  const restored = decodeConfig(decodeURIComponent(location.hash.slice(1)));
+  if (restored) Object.assign(state, restored);
   fillYearSelects();
   refreshVisibility();
+  syncUI();
   $("declarations").innerHTML = Object.values(state.index.declarations)
     .map(d => `<li>${d}</li>`).join("");
   bindUI();
   initThree();
   await onChange();
+}
+
+// speglar state → kontrollerna (efter hash-återställning)
+function syncUI() {
+  $("measure").value = state.measure;
+  $("zone").value = state.zone;
+  $("resolution").value = state.resolution;
+  $("ma-row").style.display = state.resolution === "ma" ? "" : "none";
+  $("ma-window").value = state.maWindow;
+  $("zoom").value = String(state.zoom);
+  $("norm").checked = state.norm;
+  $("norm-detail").style.display = state.norm ? "" : "none";
+  if (state.norm) {
+    $("norm-measure").value = state.normMeasure;
+    $("norm-zone").value = state.normZone;
+  }
+  $("realprices").checked = state.realPrices;
+  $("pricecat").value = state.priceCategory;
+  $("cap").value = state.cap === null ? "none" : String(state.cap);
 }
 
 main();

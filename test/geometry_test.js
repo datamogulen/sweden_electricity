@@ -18,7 +18,7 @@ vm.runInContext(m[1], ctx, { filename: "STL-CORE" });
 const C = ctx;
 
 const glyphs = JSON.parse(fs.readFileSync(path.join(ROOT, "site", "glyphs.json"), "utf8"));
-const qr = JSON.parse(fs.readFileSync(path.join(ROOT, "site", "qr.json"), "utf8"));
+const qr = ctx.qrEncode("HTTPS://HEDIN.IT/R/EL3D/SSE.24"); // körtidsgenererad (rev 9)
 const dataDir = path.join(ROOT, "site", "data");
 const load = (f) => JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
 
@@ -434,6 +434,72 @@ console.log("12. Runda 4: outlier-screening + totalpris för länderna");
     ok(Math.abs(model - e.esTotalOre) < 2,
       "FI-modellen träffar Eurostat-totalen",
       `${model.toFixed(1)} ≈ ${e.esTotalOre} öre/kWh`);
+  }
+}
+
+console.log("13. Runda 5: QR-kodaren avkodas av cv2; konfigurationskoden rundresar");
+{
+  const os = require("os");
+  const cp = require("child_process");
+  const payloads = [
+    "HTTPS://HEDIN.IT/R/EL3D",                       // v1
+    "HTTPS://HEDIN.IT/R/EL3D/SSE.24",                // v2
+    "HTTPS://HEDIN.IT/R/EL3D/SSE.22-24.C300.G24",    // v2, tak+glid
+    "HTTPS://HEDIN.IT/R/EL3D/TS4.15-26.A.C700.Z10.NKS1.L.BA", // v3, allt på
+  ];
+  const cases = payloads.map(p => ({ matrix: C.qrEncode(p).matrix, expect: p }));
+  // känt-dåligt: förstört sökmönster ska INTE avkodas
+  const bad = C.qrEncode(payloads[1]);
+  for (let r2 = 0; r2 < 7; r2++) for (let c2 = 0; c2 < 7; c2++) bad.matrix[r2][c2] ^= 1;
+  cases.push({ matrix: bad.matrix, expect: null });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "elqr-"));
+  const jp = path.join(tmp, "qr.json");
+  fs.writeFileSync(jp, JSON.stringify({ matrices: cases }));
+  let out = "";
+  try {
+    out = cp.execSync(
+      `/Library/Frameworks/Python.framework/Versions/3.12/bin/python3 ` +
+      `${JSON.stringify(path.join(__dirname, "decode_qr.py"))} ${JSON.stringify(jp)}`,
+      { encoding: "utf8" });
+  } catch (e) { out = String(e.stdout || ""); }
+  const linesOut = out.trim().split("\n");
+  payloads.forEach((p, i) => {
+    ok(linesOut[i] === "OK " + p, `cv2 avkodar payload ${i + 1} (v${C.qrEncode(p).version})`,
+      (linesOut[i] || "").slice(0, 60));
+  });
+  ok(linesOut[payloads.length] === "MISS", "förstört sökmönster avkodas inte (känt-dåligt)");
+  // för lång payload och ogiltigt tecken vägras
+  let threw = false;
+  try { C.qrEncode("X".repeat(200)); } catch (e) { threw = /BYGGSPÄRR/.test(String(e)); }
+  ok(threw, "payload > v5 vägras");
+  threw = false;
+  try { C.qrEncode("små bokstäver"); } catch (e) { threw = /BYGGSPÄRR/.test(String(e)); }
+  ok(threw, "tecken utanför alfanumeriska läget vägras");
+
+  // konfigurationskoden: rundresa för representativa vyer
+  const states = [
+    { measure: "price", zone: "SE", yearFrom: 2024, yearTo: 2024, resolution: "hour",
+      maWindow: 24, cap: null, zoom: 1, norm: false, normMeasure: "consumption",
+      normZone: "SE", realPrices: true, priceCategory: "DE" },
+    { measure: "consumption", zone: "SE2", yearFrom: 2022, yearTo: 2025, resolution: "ma",
+      maWindow: 168, cap: null, zoom: 5, norm: true, normMeasure: "consumption",
+      normZone: "SE", realPrices: true, priceCategory: "DE" },
+    { measure: "totalpris", zone: "FI", yearFrom: 2015, yearTo: 2026, resolution: "year",
+      maWindow: 24, cap: 700, zoom: 1, norm: false, normMeasure: "price",
+      normZone: "SE", realPrices: false, priceCategory: "DA" },
+  ];
+  for (const s of states) {
+    const code = C.encodeConfig(s);
+    const back = C.decodeConfig(code);
+    const keys = ["measure", "zone", "yearFrom", "yearTo", "resolution", "cap",
+                  "zoom", "norm", "realPrices", "priceCategory"];
+    const same = keys.every(k => String(back[k]) === String(s[k])) &&
+      (s.resolution !== "ma" || back.maWindow === s.maWindow) &&
+      (!s.norm || (back.normMeasure === s.normMeasure && back.normZone === s.normZone));
+    ok(same, `konfigurationskod rundresar: ${code}`);
+    const urlOk = [...(`HTTPS://HEDIN.IT/R/EL3D/` + code)]
+      .every(ch => "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:".includes(ch));
+    ok(urlOk, `koden håller sig i QR:s alfanumeriska läge: ${code}`);
   }
 }
 
