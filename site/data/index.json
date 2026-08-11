@@ -427,5 +427,5 @@
   "outliers": "Förbrukningsdata screenas automatiskt: värden över 2,5× medianen för samma timme ±7 dygn sätts som saknade (kända ENTSO-E-fel där SE1/SE2 flerfaldigas i timmar; lista i data_src/outlier_report.txt). Priser screenas inte — pristoppar är verkliga.",
   "countries": "Ländernas priser i öre/kWh (svensk valuta) för kommensurabilitet; KPI-justering använder svensk KPI även för länderna (svenskt penningvärde, deklarerat). Totalpris hushåll: Sverige ur SCB EN0301, länderna ur Eurostat nrg_pc_204 (samma förbrukningsband; DE–LU använder tyska konsumentpriser)."
  },
- "built": "2026-08-10 10:38 UTC"
+ "built": "2026-08-10 12:45 UTC"
 }
