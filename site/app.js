@@ -1721,8 +1721,11 @@ function initThree() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xf7f2e6);
   camera = new THREE.PerspectiveCamera(38, 1, 1, 4000);
-  const amb = new THREE.AmbientLight(0xffffff, 0.55);
-  const dir = new THREE.DirectionalLight(0xfff4e0, 0.75);
+  // himmel/mark-ljus i st.f. platt ambient: ovansidor ljusa, sidor mörkare
+  // → staplarnas relief läses tydligare
+  const amb = new THREE.HemisphereLight(0xfffaf0, 0x6b5a48, 0.62);
+  amb.position.set(0, 0, 1);
+  const dir = new THREE.DirectionalLight(0xfff1dc, 0.85);
   dir.position.set(-150, -220, 300);
   const dir2 = new THREE.DirectionalLight(0xd8e8ff, 0.25);
   dir2.position.set(200, 150, 120);
@@ -1734,38 +1737,112 @@ function initThree() {
   resize();
   window.addEventListener("resize", resize);
 
-  let dragging = false, lx = 0, ly = 0;
-  canvasEl.addEventListener("pointerdown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; });
-  window.addEventListener("pointerup", () => { dragging = false; });
+  // pekare: en = rotera, två = nyp-zoom; kort tryck (touch) = visa värde
+  const ptrs = new Map();
+  let dragging = false, lx = 0, ly = 0, pinch0 = 0, dist0 = 0, moved = 0;
+  const pinchLen = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  canvasEl.addEventListener("pointerdown", (e) => {
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { canvasEl.setPointerCapture(e.pointerId); } catch (_) {}
+    if (ptrs.size === 2) { dragging = false; pinch0 = pinchLen(); dist0 = view.dist; }
+    else { dragging = true; lx = e.clientX; ly = e.clientY; moved = 0; }
+  });
+  const up = (e) => {
+    const wasTap = dragging && moved < 8 && e.pointerType !== "mouse";
+    ptrs.delete(e.pointerId);
+    dragging = false;
+    if (wasTap) tooltipMove(e);
+  };
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
   window.addEventListener("pointermove", (e) => {
-    if (dragging) {
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 2 && pinch0 > 0) {
+      view.dist = Math.max(60, Math.min(2500, dist0 * pinch0 / Math.max(1, pinchLen())));
+      view.userZoomed = true;
+      requestRender();
+    } else if (dragging) {
+      moved += Math.abs(e.clientX - lx) + Math.abs(e.clientY - ly);
       view.yaw -= (e.clientX - lx) * 0.008;
       view.pitch = Math.max(-1.49, Math.min(1.49, view.pitch + (e.clientY - ly) * 0.008));
       lx = e.clientX; ly = e.clientY;
+      if (moved > 8) { $("tooltip").style.display = "none"; view.userRotated = true; }
       requestRender();
-    } else tooltipMove(e);
+    } else if (e.pointerType === "mouse") tooltipMove(e);
   });
   canvasEl.addEventListener("wheel", (e) => {
     e.preventDefault();
     view.dist = Math.max(60, Math.min(2500, view.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
+    view.userZoomed = true;
     requestRender();
   }, { passive: false });
 }
 
 function resize() {
   const w = canvasEl.clientWidth || canvasEl.parentElement.clientWidth;
-  const h = canvasEl.parentElement.clientHeight;
+  const h = canvasEl.clientHeight || canvasEl.parentElement.clientHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (state.plate && !view.userZoomed) fitView();
   requestRender();
 }
 
-function meshFromTris(tris, color) {
+// passa modellen i vyn — smal (stående mobil) vy behöver längre avstånd
+function fitView() {
+  const plate = state.showNegTwin && state.twinPlate ? state.twinPlate : state.plate;
+  const diag = Math.hypot(plate.widthMM, plate.depthMM, 80);
+  const a = camera.aspect || 1.6;
+  // stående vy: vrid så att årets långa axel löper in i djupet
+  if (!view.userRotated) view.yaw = a < 1 ? -1.0 : -0.6;
+  view.dist = diag * 1.45 * Math.max(1, Math.sqrt(1.1 / a));
+}
+
+// höjdfärgning: nollplanet ljust sandfärgat, staplarna går mot djupröd/plommon
+// med höjden (samma ramp för alla mått; skalan står i avläsningen)
+const RAMP = [[0, 0xe9d8b4], [0.2, 0xf0b35a], [0.45, 0xe07b3c], [0.72, 0xc0462f], [1, 0x7e2544]];
+function rampColor(t, out) {
+  t = Math.max(0, Math.min(1, t));
+  let i = 1; while (i < RAMP.length - 1 && t > RAMP[i][0]) i++;
+  const [t0, c0] = RAMP[i - 1], [t1, c1] = RAMP[i];
+  const f = (t - t0) / (t1 - t0 || 1);
+  for (let k = 0; k < 3; k++) {
+    const sh = 16 - 8 * k;
+    out[k] = (((c0 >> sh) & 255) * (1 - f) + ((c1 >> sh) & 255) * f) / 255;
+  }
+  return out;
+}
+function heightColors(tris, z0, zMax) {
+  const n = tris.length / 3, col = new Float32Array(tris.length), c = [0, 0, 0];
+  // stapeltopparna ligger ofta i ett smalt band högt upp (t.ex. förbrukning
+  // 12–25 GW) → sprid rampen över topparnas eget spann (2:a percentilen → max)
+  // och låt sträckan nollplan → lägsta topp ta rampens första femtedel
+  const tops = [];
+  for (let i = 0; i < n; i += 7) { const z = tris[i * 3 + 2]; if (z > z0 + 0.3) tops.push(z); }
+  tops.sort((a, b) => a - b);
+  const zLow = tops.length ? Math.min(tops[Math.floor(tops.length * 0.02)], zMax - 1e-3) : z0;
+  const tOf = (z) => z <= zLow
+    ? 0.2 * (z - z0) / Math.max(1e-6, zLow - z0)
+    : 0.2 + 0.8 * (z - zLow) / Math.max(1e-6, zMax - zLow);
+  for (let i = 0; i < n; i++) {
+    const z = tris[i * 3 + 2];
+    if (z < z0 - 0.05) { col[i * 3] = 0.48; col[i * 3 + 1] = 0.36; col[i * 3 + 2] = 0.3; continue; }
+    rampColor(tOf(z), c);
+    col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
+  }
+  // three r128 tolkar vertexfärger som linjära — gå från sRGB
+  for (let i = 0; i < col.length; i++) col[i] = Math.pow(col[i], 2.2);
+  return col;
+}
+
+function meshFromTris(tris, color, colors) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tris), 3));
+  if (colors) geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshPhongMaterial({ color, shininess: 12 });
+  const mat = new THREE.MeshPhongMaterial(colors
+    ? { vertexColors: true, shininess: 18, specular: 0x2a2520 }
+    : { color, shininess: 12 });
   return new THREE.Mesh(geo, mat);
 }
 
@@ -1779,7 +1856,9 @@ function updateScene() {
   if (state.showNegTwin && state.twinMirror) {
     plateTris = mirrorTrisX(plateTris, plate.widthMM); // förhandsgranska limningsläget
   }
-  plateMesh = meshFromTris(plateTris, 0xc96f4a);
+  let zTop = plate.zP;
+  for (let i = 2; i < plateTris.length; i += 3) if (plateTris[i] > zTop) zTop = plateTris[i];
+  plateMesh = meshFromTris(plateTris, 0xc96f4a, heightColors(plateTris, plate.zP, zTop));
   scene.add(plateMesh);
   if (!state.showNegTwin) {
     textMesh = meshFromTris(state.textSolid.tris, 0x2f5a8f);
@@ -1797,8 +1876,8 @@ function updateScene() {
   }
   view.cx = plate.widthMM / 2; view.cy = plate.depthMM / 2;
   // passa in en gång per modellbygge (inte per vinkel — G4-läxan)
-  const diag = Math.hypot(plate.widthMM, plate.depthMM, 80);
-  view.dist = diag * 1.45;
+  view.userZoomed = false;
+  fitView();
   requestRender();
 }
 

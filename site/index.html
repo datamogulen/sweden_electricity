@@ -71,6 +71,29 @@ button.ghost{background:transparent;color:var(--accent)}
 #buildreport{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;
   font-size:.68rem;background:var(--bg);border-radius:4px;padding:8px;margin-top:6px}
 details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
+.touch-only{display:none}
+/* stående mobil: 3D-vyn överst, inställningarna under (sidan scrollar) */
+@media (max-width:760px){
+  body{height:auto;min-height:100vh}
+  header{padding:8px 14px;gap:4px 10px}
+  header .sub{display:none}
+  #main{flex-direction:column}
+  #stage{order:-1;flex:none;display:flex;flex-direction:column}
+  #view{height:62vh;height:62svh;flex:none}
+  #controls{width:auto;border-right:0;border-top:1px solid var(--line);
+    overflow:visible;padding:14px 16px 28px;font-size:16px}
+  #controls select,#controls input[type=text]{font-size:16px;padding:8px}
+  #controls label{font-size:.72rem}
+  .hint{font-size:.78rem}
+  .chk{font-size:.9rem}
+  button{padding:12px;font-size:1rem}
+  #readout{position:static;max-width:none;border-radius:0;border-width:1px 0 0;
+    background:var(--panel);font-size:.78rem;line-height:1.55;padding:8px 14px}
+  #hud{top:8px;right:8px;font-size:.7rem;padding:4px 8px}
+  #about{position:fixed;inset:8px;padding:16px 18px}
+  .mouse-only{display:none}
+  .touch-only{display:inline}
+}
 </style>
 </head>
 <body>
@@ -206,7 +229,7 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
     <canvas id="view"></canvas>
     <div id="tooltip"></div>
     <div id="readout"></div>
-    <div id="hud">dra = rotera · hjul = zooma · hovra = värde</div>
+    <div id="hud"><span class="mouse-only">dra = rotera · hjul = zooma · hovra = värde</span><span class="touch-only">dra = rotera · nyp = zooma · tryck = värde</span></div>
     <div id="about">
       <button id="about-close" class="ghost">Stäng</button>
       <h2>Vad är detta?</h2>
@@ -306,6 +329,6 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=20260923c"></script>
 </body>
 </html>
