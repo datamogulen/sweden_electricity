@@ -83,39 +83,67 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
   #controls{width:auto;border-right:0;border-top:1px solid var(--line);
     overflow:visible;padding:14px 16px 28px;font-size:16px}
   #controls select,#controls input[type=text]{font-size:16px;padding:8px}
-  #controls label{font-size:.72rem}
+  #controls label{font-size:.78rem}
   .hint{font-size:.78rem}
+  details summary{font-size:.8rem;padding:6px 0}
+  #buildreport{font-size:.75rem}
   .chk{font-size:.9rem}
   button{padding:12px;font-size:1rem}
   #readout{position:static;max-width:none;border-radius:0;border-width:1px 0 0;
     background:var(--panel);font-size:.78rem;line-height:1.55;padding:8px 14px}
-  #hud{top:8px;right:8px;font-size:.7rem;padding:4px 8px}
+  #hud{top:8px;right:8px;font-size:.76rem;padding:4px 8px;max-width:calc(100% - 16px)}
+  #tooltip{font-size:.8rem}
   #about{position:fixed;inset:8px;padding:16px 18px}
   .mouse-only{display:none}
   .touch-only{display:inline}
 }
+/* liggande mobil: kompakt sidopanel, bara de viktigaste readout-raderna */
+@media (max-height:500px) and (min-width:761px){
+  header{padding:4px 12px}
+  header .sub{display:none}
+  #controls{width:230px;padding:8px 10px}
+  #readout{left:6px;bottom:6px;max-width:55%;padding:5px 8px;line-height:1.45}
+  #readout div:nth-child(n+4){display:none}
+}
+@media (hover:none){
+  .mouse-only{display:none}
+  .touch-only{display:inline}
+}
+#flaggor{margin-left:auto;display:inline-flex;gap:4px;align-self:center}
+.flagga{width:auto;background:transparent;border:1px solid transparent;border-radius:5px;
+  padding:3px 5px;font-size:1.15rem;line-height:1;color:inherit;opacity:.4;min-width:36px;min-height:32px}
+.flagga.aktiv{opacity:1;border-color:var(--accent)}
+.flagga:hover{filter:none;opacity:.8}
+.flagga.aktiv:hover{opacity:1}
+.about-lang{display:none}
+.about-lang.aktiv{display:block}
 </style>
 </head>
 <body>
 <header>
-  <h1>El i Sverige över tid</h1>
-  <span class="sub">kalenderrelief · vecka × timme · webbtvilling med STL-export (WYSIWYG)</span>
+  <h1 data-i18n="h1">El i Sverige över tid</h1>
+  <span class="sub" data-i18n="sub">kalenderrelief · vecka × timme · webbtvilling med STL-export (WYSIWYG)</span>
+  <span id="flaggor">
+    <button class="flagga" data-sprak="sv" type="button" title="Svenska" aria-label="Svenska">🇸🇪</button>
+    <button class="flagga" data-sprak="en" type="button" title="English" aria-label="English">🇬🇧</button>
+    <button class="flagga" data-sprak="ja" type="button" title="日本語" aria-label="日本語">🇯🇵</button>
+  </span>
 </header>
 <div id="main">
   <div id="controls">
     <div class="grp">
-      <label for="measure">Mått</label>
+      <label for="measure" data-i18n="lMeasure">Mått</label>
       <select id="measure"></select>
     </div>
     <div class="grp">
-      <label for="zone">Område</label>
+      <label for="zone" data-i18n="lZone">Område</label>
       <select id="zone"></select>
-      <div class="hint">Hela Sverige är huvudvyn; SE1–SE4 använder samma skala
+      <div class="hint" data-i18n="hZone">Hela Sverige är huvudvyn; SE1–SE4 använder samma skala
         (områdena summerar till Sverigemodellen). Länderna (Finland, Tyskland,
         Frankrike) delar samma skalor — priser i öre/kWh via ECB-månadskurs.</div>
     </div>
     <div class="grp">
-      <label>År (ISO-år)</label>
+      <label data-i18n="lYears">År (ISO-år)</label>
       <div class="row2">
         <div><select id="year-from"></select></div>
         <div><select id="year-to"></select></div>
@@ -123,41 +151,41 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       <div class="hint" id="year-hint"></div>
     </div>
     <div class="grp">
-      <label for="resolution">Upplösning / utjämning (D6)</label>
+      <label for="resolution" data-i18n="lRes">Upplösning / utjämning (D6)</label>
       <select id="resolution">
-        <option value="hour" selected>Timme (rå data)</option>
-        <option value="ma">Glidande medel — N timmar</option>
-        <option value="day">Dygnsmedel</option>
-        <option value="week">Veckomedel</option>
-        <option value="month">Månadsmedel</option>
-        <option value="year">Årsmedel</option>
+        <option value="hour" selected data-i18n="resHour">Timme (rå data)</option>
+        <option value="ma" data-i18n="resMa">Glidande medel — N timmar</option>
+        <option value="day" data-i18n="resDay">Dygnsmedel</option>
+        <option value="week" data-i18n="resWeek">Veckomedel</option>
+        <option value="month" data-i18n="resMonth">Månadsmedel</option>
+        <option value="year" data-i18n="resYear">Årsmedel</option>
       </select>
       <div class="row2" id="ma-row" style="display:none;margin-top:6px">
         <div><input type="text" id="ma-window" value="24" inputmode="numeric"></div>
-        <div class="hint" style="flex:2">timmar, centrerat fönster</div>
+        <div class="hint" style="flex:2" data-i18n="maHint">timmar, centrerat fönster</div>
       </div>
-      <div class="hint">Medel graveras på modellen (t.ex. DYGNSMEDEL, GLID 24 H)
+      <div class="hint" data-i18n="hRes">Medel graveras på modellen (t.ex. DYGNSMEDEL, GLID 24 H)
         — aggregering slätar timtopparna och är därför ett synligt val.</div>
     </div>
     <div class="grp" id="cat-row" style="display:none">
-      <label for="pricecat">Typkund (SCB-förbrukarkategori)</label>
+      <label for="pricecat" data-i18n="lCat">Typkund (SCB-förbrukarkategori)</label>
       <select id="pricecat"></select>
-      <div class="hint">15 000+ kWh/år ≈ villa med elvärme; 2 500–4 999 ≈
+      <div class="hint" data-i18n="hCat">15 000+ kWh/år ≈ villa med elvärme; 2 500–4 999 ≈
         lägenhet/villa utan elvärme. Komponenterna är rikssnitt (SCB EN0301).</div>
     </div>
     <div class="grp" id="real-row" style="display:none">
       <div class="chk"><input type="checkbox" id="realprices" checked>
-        <span>Fasta priser (KPI-justerade)</span></div>
-      <div class="hint">Alla timvärden räknas om till dagens penningvärde med
+        <span data-i18n="cReal">Fasta priser (KPI-justerade)</span></div>
+      <div class="hint" data-i18n="hReal">Alla timvärden räknas om till dagens penningvärde med
         KPI per kalendermånad (SCB, 2020=100). Ur-kryssat = löpande nominella
         priser. Läget graveras på modellen.</div>
     </div>
     <div class="grp" id="negtwin-row" style="display:none">
       <div class="chk"><input type="checkbox" id="negtwin">
-        <span>Visa negativ-tvillingen</span></div>
+        <span data-i18n="cTwin">Visa negativ-tvillingen</span></div>
       <div class="chk" style="margin-top:4px"><input type="checkbox" id="twinmirror">
-        <span>Spegla tvillingen (limmas mot undersidan)</span></div>
-      <div class="hint">Digitalt visas negativa timmar som nedåtstaplar under
+        <span data-i18n="cMirror">Spegla tvillingen (limmas mot undersidan)</span></div>
+      <div class="hint" data-i18n="hTwin">Digitalt visas negativa timmar som nedåtstaplar under
         plattan. I utskrift är huvudmodellen klippt vid 0 och tvillingen bär
         beloppen som egen STL. Speglad tvilling vänds runt långsidan och limmas
         mot huvudmodellens undersida — varje negativ timme hamnar exakt under
@@ -165,73 +193,67 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
     </div>
     <div class="grp">
       <div class="chk"><input type="checkbox" id="showunder">
-        <span>Förhandsgranska undersidan (QR + text)</span></div>
-      <div class="hint">Undersidans tvåfärgstryck följer alltid med i exporten;
+        <span data-i18n="cUnder">Förhandsgranska undersidan (QR + text)</span></div>
+      <div class="hint" data-i18n="hUnder">Undersidans tvåfärgstryck följer alltid med i exporten;
         här kan det tändas i 3D-vyn (titta underifrån).</div>
     </div>
     <div class="grp" id="cap-row">
-      <label for="cap">Pristak (D3 — kapning är ett synligt val)</label>
-      <select id="cap">
-        <option value="none" selected>Inget tak (hela toppen skrivs ut)</option>
-        <option value="200">200 öre/kWh — platå + gravyr TAK</option>
-        <option value="300">300 öre/kWh — platå + gravyr TAK</option>
-        <option value="400">400 öre/kWh — platå + gravyr TAK</option>
-        <option value="500">500 öre/kWh — platå + gravyr TAK</option>
-        <option value="700">700 öre/kWh — platå + gravyr TAK</option>
-      </select>
-      <div class="hint">Extrema toppar blir sköra 1 mm²-pelare i utskrift.
+      <label for="cap" data-i18n="lCap">Pristak (D3 — kapning är ett synligt val)</label>
+      <select id="cap"></select>
+      <div class="hint" data-i18n="hCap">Extrema toppar blir sköra 1 mm²-pelare i utskrift.
         Taket graveras på modellen och deklareras i följesedeln.</div>
     </div>
     <div class="grp">
-      <label for="zoom">Höjdzoom (avsteg från familjeskalan)</label>
+      <label for="zoom" data-i18n="lZoom">Höjdzoom (avsteg från familjeskalan)</label>
       <select id="zoom">
-        <option value="1" selected>×1 — familjeskala (jämförbar med allt)</option>
-        <option value="2">×2 — graveras ZOOM ×2</option>
-        <option value="5">×5 — graveras ZOOM ×5</option>
-        <option value="10">×10 — graveras ZOOM ×10</option>
+        <option value="1" selected data-i18n="zoom1">×1 — familjeskala (jämförbar med allt)</option>
+        <option value="2" data-i18n="zoom2">×2 — graveras ZOOM ×2</option>
+        <option value="5" data-i18n="zoom5">×5 — graveras ZOOM ×5</option>
+        <option value="10" data-i18n="zoom10">×10 — graveras ZOOM ×10</option>
       </select>
-      <div class="hint">För små elområden (t.ex. SE1) kan familjeskalan bli låg.
+      <div class="hint" data-i18n="hZoom">För små elområden (t.ex. SE1) kan familjeskalan bli låg.
         Zoomad modell är INTE jämförbar med ozoomade — faktorn graveras.</div>
     </div>
     <div class="grp">
       <div class="chk"><input type="checkbox" id="norm">
-        <span>Normera volym mot referens</span></div>
+        <span data-i18n="cNorm">Normera volym mot referens</span></div>
       <div id="norm-detail">
         <div class="row2" style="margin-top:6px">
           <div><select id="norm-measure"></select></div>
           <div><select id="norm-zone"></select></div>
         </div>
-        <div class="hint">Höjderna skalas så att totalvolymen blir samma som
+        <div class="hint" data-i18n="hNorm">Höjderna skalas så att totalvolymen blir samma som
           referensens (samma år). Paret jämför FORM, inte mängd — absolut skala
           gäller inte längre. Faktorn graveras NORM ×k.</div>
       </div>
     </div>
     <div class="grp">
-      <label for="weeks">Veckoetiketter på höger apron</label>
+      <label for="weeks" data-i18n="lWeeks">Veckoetiketter på höger apron</label>
       <input type="text" id="weeks" value="1,26,52">
-      <div class="hint">Kommaseparerade veckonummer som graveras per år
+      <div class="hint" data-i18n="hWeeks">Kommaseparerade veckonummer som graveras per år
         (utöver årtalet).</div>
     </div>
     <div class="grp">
-      <button id="export-btn">Exportera STL (zip)</button>
-      <div class="hint">Zip med modell-STL + text-STL (samma koordinatsystem,
+      <button id="export-btn" data-i18n="bExport">Exportera STL (zip)</button>
+      <div class="hint" data-i18n="hExport">Zip med modell-STL + text-STL (samma koordinatsystem,
         importera båda) + följesedel. Exporten vägrar om soliderna inte är
         vattentäta eller text hamnar under 2,2 mm versalhöjd.</div>
     </div>
     <div class="grp">
-      <button class="ghost" id="about-btn">Om &amp; metod</button>
+      <button class="ghost" id="about-btn" data-i18n="bAbout">Om &amp; metod</button>
     </div>
     <div id="error"></div>
-    <details><summary>Byggrapport (textblock, spärrar)</summary>
+    <details><summary data-i18n="buildRep">Byggrapport (textblock, spärrar)</summary>
       <div id="buildreport"></div></details>
   </div>
   <div id="stage">
     <canvas id="view"></canvas>
     <div id="tooltip"></div>
     <div id="readout"></div>
-    <div id="hud"><span class="mouse-only">dra = rotera · hjul = zooma · hovra = värde</span><span class="touch-only">dra = rotera · nyp = zooma · tryck = värde</span></div>
+    <div id="hud"><span class="mouse-only" data-i18n="hudMouse">dra = rotera · hjul = zooma · hovra = värde</span><span class="touch-only" data-i18n="hudTouch">dra = rotera · nyp = zooma · tryck = värde</span></div>
     <div id="about">
-      <button id="about-close" class="ghost">Stäng</button>
+      <button id="about-close" class="ghost" data-i18n="bClose">Stäng</button>
+      <div class="about-lang" data-lang="sv">
       <h2>Vad är detta?</h2>
       <p>En datafysikalisering av svensk el som <i>kalenderrelief</i>: varje
       stapel är en timme (1 mm), varje dygnsblock 24 mm, varje rad en ISO-vecka
@@ -310,7 +332,7 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       passerar. Priser screenas inte: pristoppar är verkliga (D3).
       SE-summan nollas i kontaminerade timmar.</p>
       <h2>Datadeklarationer</h2>
-      <ul id="declarations"></ul>
+      <ul class="declarations"></ul>
       <h2>Designgrammatik (kort)</h2>
       <p>Form F3 (temporal foldning/kalenderrelief). Operatorer: O2
       (kommensurabla familjer — kärnan), O3 (år/område/mått/tak som moduler),
@@ -325,10 +347,145 @@ details summary{cursor:pointer;font-size:.72rem;color:var(--dim)}
       export kontrolleras att varje solid är vattentät (varje riktad kant har
       exakt en motpartner) och har volym &gt; 0; text under 2,2 mm versalhöjd
       stoppar bygget. Samma geometrikärna körs i Node-testet mot källdata.</p>
+      </div>
+      <div class="about-lang" data-lang="en" lang="en">
+      <h2>What is this?</h2>
+      <p>A data physicalization of Swedish electricity as a <i>calendar
+      relief</i>: every bar is one hour (1 mm), every day block 24 mm, every
+      row one ISO week (1 mm deep). Along a row you see the social rhythm of
+      the week; down the columns, the natural rhythm of the seasons —
+      electricity is the superposition of the two. The form is the same as
+      the district-heating pair in §4.4 of the paper and is deliberately
+      commensurable with it.</p>
+      <h2>Declared scales (identical in every export)</h2>
+      <ul>
+        <li>Consumption and production: <b>2 mm = 1 GW</b> (0.002 mm/MW).
+          The same scale for both measures and all areas — SE1+SE2+SE3+SE4
+          add up by volume to the Sweden model.</li>
+        <li>Spot price: <b>1 mm = 10 öre/kWh</b> (100 öre = 1 SEK). Nominal
+          prices excluding tax, VAT, retail margin and grid fee.</li>
+        <li>Width 1 mm = 1 hour; depth 1 mm = 1 week; base plate 1.2 mm.</li>
+      </ul>
+      <p>Deviations (zoom, volume normalization, price cap, plinth for
+      negative prices) are always engraved on the object and declared in the
+      packing slip. The engraving and the packing slip are in Swedish.</p>
+      <h2>Multi-year mode</h2>
+      <p>Rows are laid out chronologically with time growing towards the
+      viewer: January of year X+1 sits directly in front of December of year
+      X ("back to back"). Within a year, week 52 is at the front and week 1 at
+      the back; year and week numbers on the right apron make the direction
+      readable in plastic.</p>
+      <h2>Negative prices (D2, revisions 1 + 6)</h2>
+      <p>In the web twin, negative hours are shown as <i>downward bars</i>
+      below the plate — that works on screen. In print they are clipped to 0
+      in the main model (declared and counted), and the amounts are carried by
+      a <i>negative twin</i> as a separate STL, optionally mirrored so that it
+      can be glued to the underside of the main model with every negative hour
+      exactly below its cell. See SPEC_REVISIONS.md.</p>
+      <h2>Money value and price measures (revision 6)</h2>
+      <p><b>Real prices</b> (default, can be unticked): all price values are
+      CPI-adjusted to the latest month using Statistics Sweden's (SCB) shadow
+      index 2020=100, per calendar month of each hour. The mode is engraved
+      (FASTA/LÖPANDE PRISER = real/nominal prices).</p>
+      <p><b>Spot cost</b> = spot price × consumption per hour, summed over the
+      bidding zones (zone price × zone load), in MSEK/h — the multiplication
+      that the district-heating pair's cost surface makes physical. Scale
+      1 mm = 2 MSEK/h.</p>
+      <p><b>Total household price (model)</b>: hourly price = (spot + retail
+      margin + grid price + energy tax) × 1.25 VAT, where the margin for each
+      half-year is calibrated against SCB's reported household prices (EN0301,
+      per consumer category) — the model matches SCB's half-year totals within
+      0.1 öre. <b>Caveats:</b> the components are national averages in
+      öre/kWh with fixed fees spread over consumption; the hourly profile is
+      that of the spot price (fixed-price contracts and hourly grid tariffs
+      are not captured); the bidding-zone view uses the zone's spot price with
+      national components; half-years without SCB data extrapolate the latest
+      known components (counted and declared).</p>
+      <h2>The underside</h2>
+      <p>The underside carries a QR code (to this page) and source text,
+      mirrored so they read correctly from below, as flush two-colour print in
+      the 0–0.6 mm layer: a light background part over the whole underside and
+      a dark print part — colour provides the contrast, not depth, and the
+      contrast is independent of the bar colour. Print against a smooth build
+      plate. Year boundaries are marked with 1 mm grooves in the zero plane,
+      like the day grooves.</p>
+      <h2>Countries (revision 7)</h2>
+      <p>Finland (2015–), Germany DE–LU (2019–; the bidding zone did not exist
+      before Oct 2018) and France (2015–) with the same three basic measures
+      and the same scales. Prices are ENTSO-E day-ahead prices in EUR/MWh
+      converted to öre/kWh with the ECB monthly average rate (Sweden: Nord
+      Pool via mgrey with daily rate — same underlying price, coarser rate
+      resolution, declared). The CPI adjustment uses Swedish CPI for the other
+      countries too: everything is expressed in Swedish money value. Total
+      household price is available for the countries as well: components from
+      Eurostat nrg_pc_204 (the same consumption bands DA–DE as SCB,
+      half-yearly, three tax levels), VAT factor from the ratio incl./excl.
+      VAT, calibrated against each country's spot average with the same model
+      structure as Sweden's (deviation from Eurostat totals &lt; 0.1 öre).
+      DE–LU uses German consumer prices. Volume normalization works across
+      borders — e.g. Finland's consumption normalized against Sweden's
+      compares daily and seasonal shape independently of country size.</p>
+      <h2>Outlier screening (revision 8)</h2>
+      <p>Consumption data are screened automatically: values above 2.5× the
+      median for the same hour ±7 days are set as missing and listed in a
+      report (57 hours in seven known ENTSO-E incidents, e.g. 2026-03-28 and
+      2022-02-10, where SE1/SE2 multiply while SE3/SE4 drop — the zone
+      allocation is scrambled at the source). Real winter peaks (26 GW) pass.
+      Prices are not screened: price spikes are real (D3). The Sweden total is
+      set to missing in contaminated hours.</p>
+      <h2>Data declarations</h2>
+      <ul class="declarations"></ul>
+      <h2>Design grammar (brief)</h2>
+      <p>Form F3 (temporal folding/calendar relief). Operators: O2
+      (commensurable families — the core), O3 (year/area/measure/cap as
+      modules), O4 (this twin; WYSIWYG export). Decision dimensions are
+      documented in the project's SPEC.md — e.g. D2 (zero plane/plinth), D3
+      (cap as a visible choice), D4/O2 (declared volume normalization), D5
+      (family scales), D9 (week × hour crosses social and natural rhythm), D13
+      (production is booked where it is produced, consumption where it is
+      consumed — pairing per bidding zone is the attribution reading).</p>
+      <h2>Verification</h2>
+      <p>The view and the STL are built by the same code (WYSIWYG as
+      architecture). On export, every solid is checked to be watertight (every
+      directed edge has exactly one counterpart) and to have volume &gt; 0;
+      text below 2.2 mm cap height stops the build. The same geometry kernel
+      runs in the Node test against the source data.</p>
+      </div>
+      <div class="about-lang" data-lang="ja" lang="ja">
+      <h2>これは何？</h2>
+      <p>スウェーデンの電力を<i>カレンダー・レリーフ</i>として立体化したデータ・フィジカライゼーションです。棒1本が1時間（幅1 mm）、1日のブロックが24 mm、1行が1つのISO週（奥行1 mm）に対応します。行に沿って見ると1週間の社会的なリズムが、列に沿って見ると季節という自然のリズムが現れます。電力需要はこの二つのリズムの重ね合わせです。形は論文§4.4の地域暖房ペアと同じで、意図的にそれと比較できる（通約可能な）設計になっています。</p>
+      <h2>明示されたスケール（すべての書き出しで共通）</h2>
+      <ul>
+        <li>消費量と発電量：<b>2 mm = 1 GW</b>（0.002 mm/MW）。両方の指標とすべてのエリアで同じスケールです。SE1〜SE4の体積を足すとスウェーデン全体のモデルになります。</li>
+        <li>スポット価格：<b>1 mm = 10 öre/kWh</b>（100 öre = 1スウェーデン・クローナ）。税、付加価値税、小売マージン、託送料金を含まない名目価格です。</li>
+        <li>幅1 mm = 1時間、奥行1 mm = 1週間、ベースプレート1.2 mm。</li>
+      </ul>
+      <p>スケールからの逸脱（ズーム、体積の正規化、価格上限、負の価格のための台座）は、必ずモデルに刻印され、同梱の仕様書（följesedel）に記載されます。刻印と仕様書はスウェーデン語です。</p>
+      <h2>複数年モード</h2>
+      <p>行は時系列に並び、時間は見る人の方へ進みます。X+1年の1月はX年の12月のすぐ手前に置かれます（「背中合わせ」）。1年の中では第52週が手前、第1週が奥になり、右側の縁に刻まれた年と週番号で、プラスチックでも向きが読み取れます。</p>
+      <h2>負の価格（D2、改訂1・6）</h2>
+      <p>Web版のツインでは、負の時間帯はプレートの下に伸びる<i>下向きの棒</i>として表示されます。印刷では本体モデルで0に切り詰められ（明示・集計済み）、その値は別STLの<i>負のツイン</i>が担います。ツインは鏡像にすることもでき、本体の底面に貼り合わせると、負の各時間がちょうど対応するセルの真下に来ます。詳しくはSPEC_REVISIONS.mdを参照してください。</p>
+      <h2>貨幣価値と価格指標（改訂6）</h2>
+      <p><b>実質価格</b>（既定、チェックを外すと名目価格）：すべての価格を、各時間の暦月ごとにスウェーデン統計局（SCB）のシャドー指数（2020年=100）で最新月の価値に換算します。モードはモデルに刻印されます（FASTA/LÖPANDE PRISER＝実質／名目価格）。</p>
+      <p><b>スポットコスト</b>＝スポット価格×時間ごとの消費量を入札エリアごとに合計したもの（エリア価格×エリア負荷）。単位はMSEK/h（百万クローナ/時）。地域暖房ペアのコスト面が物理化したのと同じ掛け算です。スケールは1 mm = 2 MSEK/h。</p>
+      <p><b>家庭向け総電力価格（モデル）</b>：時間ごとの価格＝（スポット＋小売マージン＋託送料金＋電力税）×1.25（付加価値税）。小売マージンは半期ごとに、SCBが公表する家庭向け電力価格（EN0301、需要家区分別）に合うよう較正しており、SCBの半期平均と0.1 öre以内で一致します。<b>注意点：</b>各構成要素は全国平均（öre/kWh）で、固定料金は消費量に按分しています。時間変動はスポット価格のものです（固定価格契約や時間帯別の託送料金は反映されません）。入札エリア表示ではエリアのスポット価格に全国共通の構成要素を加えています。SCBのデータがない半期は、最後に判明している構成要素で外挿しています（集計・明示済み）。</p>
+      <h2>底面</h2>
+      <p>底面には（このページへの）QRコードと出典テキストが、下から正しく読めるよう鏡像で、0〜0.6 mmの層に面一の2色印刷として入ります。底面全体を覆う明るい背景部分と、暗い印刷部分です。コントラストは深さではなく色で生まれ、棒の色には左右されません。表面が平滑なビルドプレートで印刷してください。年の変わり目は、日の区切りと同じく、ゼロ面に1 mmの溝で示されます。</p>
+      <h2>他の国（改訂7）</h2>
+      <p>フィンランド（2015年〜）、ドイツDE–LU（2019年〜。この入札エリアは2018年10月以前は存在しません）、フランス（2015年〜）を、同じ3つの基本指標と同じスケールで扱います。価格はENTSO-Eの前日市場価格（EUR/MWh）を、欧州中央銀行（ECB）の月平均為替レートでöre/kWhに換算したものです（スウェーデンはmgrey経由のNord Pool価格で日次レート。元の価格は同じで、為替の時間分解能だけが粗く、その旨を明示しています）。物価調整は他国にもスウェーデンのCPIを用い、すべてスウェーデンの貨幣価値で表します。家庭向け総電力価格は他国にもあります。構成要素はEurostat nrg_pc_204（SCBと同じ消費帯DA〜DE、半期ごと、3段階の税込み区分）から取り、付加価値税係数は税込み／税抜きの比から求め、スウェーデンと同じモデル構造で各国のスポット平均に較正しています（Eurostatの合計との差は0.1 öre未満）。DE–LUにはドイツの消費者価格を使います。体積の正規化は国境を越えて使えます。たとえばフィンランドの消費量をスウェーデンの消費量で正規化すると、国の規模に関係なく1日と季節の形を比べられます。</p>
+      <h2>外れ値の除去（改訂8）</h2>
+      <p>消費データは自動的にチェックされます。同じ時刻の前後7日間の中央値の2.5倍を超える値は欠損扱いとし、レポートに記録します（ENTSO-Eの既知の7件の障害で計57時間。例：2026-03-28と2022-02-10。SE1/SE2が数倍になる一方でSE3/SE4が下がる、配信元でのエリア配分の乱れ）。実際の冬のピーク（26 GW）は通過します。価格はチェックしません。価格の急騰は現実のものだからです（D3）。汚染された時間帯ではスウェーデン合計を欠損にします。</p>
+      <h2>データに関する注記</h2>
+      <ul class="declarations"></ul>
+      <h2>デザイン文法（概要）</h2>
+      <p>形態F3（時間の折り畳み／カレンダー・レリーフ）。演算子：O2（通約可能なファミリー。中核）、O3（年・エリア・指標・上限をモジュールとして）、O4（このツイン。WYSIWYG書き出し）。設計上の決定はプロジェクトのSPEC.mdに記録しています。例：D2（ゼロ面／台座）、D3（見える選択としての上限）、D4/O2（明示された体積正規化）、D5（ファミリー・スケール）、D9（週×時間で社会と自然のリズムが交差）、D13（発電は発電した場所、消費は消費した場所で計上。入札エリアごとの対比が帰属の読み方）。</p>
+      <h2>検証</h2>
+      <p>画面表示とSTLは同じコードで生成されます（アーキテクチャとしてのWYSIWYG）。書き出し時には、各ソリッドが水密であること（すべての有向辺にちょうど1つの対になる辺があること）と体積が0より大きいことを確認し、大文字高さ2.2 mm未満の文字があれば生成を止めます。同じ形状カーネルが、Nodeのテストで元データに対しても実行されます。</p>
+      </div>
     </div>
   </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=20260923c"></script>
+<script src="app.js?v=20260924a"></script>
 </body>
 </html>

@@ -1435,6 +1435,301 @@ const fmtSw = (x, dec = 1) => x.toLocaleString("sv-SE",
 
 const QR_BASE = "HTTPS://HEDIN.IT/R/EL3D";
 
+// ------------------------------------------------------------------- språk
+// sv/en/ja för hela UI:t. Gravyren på modellen och följesedeln är alltid
+// svenska (glyphs.json saknar kana; följesedeln hör till objektet).
+const I18N = {
+  sv: {
+    title: "El i Sverige över tid — kalenderrelief",
+    h1: "El i Sverige över tid",
+    sub: "kalenderrelief · vecka × timme · webbtvilling med STL-export (WYSIWYG)",
+    lMeasure: "Mått", lZone: "Område",
+    hZone: "Hela Sverige är huvudvyn; SE1–SE4 använder samma skala (områdena summerar till Sverigemodellen). Länderna (Finland, Tyskland, Frankrike) delar samma skalor — priser i öre/kWh via ECB-månadskurs.",
+    lYears: "År (ISO-år)",
+    lRes: "Upplösning / utjämning (D6)",
+    resHour: "Timme (rå data)", resMa: "Glidande medel — N timmar", resDay: "Dygnsmedel",
+    resWeek: "Veckomedel", resMonth: "Månadsmedel", resYear: "Årsmedel",
+    maHint: "timmar, centrerat fönster",
+    hRes: "Medel graveras på modellen (t.ex. DYGNSMEDEL, GLID 24 H) — aggregering slätar timtopparna och är därför ett synligt val.",
+    lCat: "Typkund (SCB-förbrukarkategori)",
+    hCat: "15 000+ kWh/år ≈ villa med elvärme; 2 500–4 999 ≈ lägenhet/villa utan elvärme. Komponenterna är rikssnitt (SCB EN0301).",
+    cReal: "Fasta priser (KPI-justerade)",
+    hReal: "Alla timvärden räknas om till dagens penningvärde med KPI per kalendermånad (SCB, 2020=100). Ur-kryssat = löpande nominella priser. Läget graveras på modellen.",
+    cTwin: "Visa negativ-tvillingen",
+    cMirror: "Spegla tvillingen (limmas mot undersidan)",
+    hTwin: "Digitalt visas negativa timmar som nedåtstaplar under plattan. I utskrift är huvudmodellen klippt vid 0 och tvillingen bär beloppen som egen STL. Speglad tvilling vänds runt långsidan och limmas mot huvudmodellens undersida — varje negativ timme hamnar exakt under sin cell.",
+    cUnder: "Förhandsgranska undersidan (QR + text)",
+    hUnder: "Undersidans tvåfärgstryck följer alltid med i exporten; här kan det tändas i 3D-vyn (titta underifrån).",
+    lCap: "Pristak (D3 — kapning är ett synligt val)",
+    hCap: "Extrema toppar blir sköra 1 mm²-pelare i utskrift. Taket graveras på modellen och deklareras i följesedeln.",
+    capNone: "Inget tak (hela toppen skrivs ut)", capSuffix: " — platå + gravyr TAK",
+    lZoom: "Höjdzoom (avsteg från familjeskalan)",
+    zoom1: "×1 — familjeskala (jämförbar med allt)", zoom2: "×2 — graveras ZOOM ×2",
+    zoom5: "×5 — graveras ZOOM ×5", zoom10: "×10 — graveras ZOOM ×10",
+    hZoom: "För små elområden (t.ex. SE1) kan familjeskalan bli låg. Zoomad modell är INTE jämförbar med ozoomade — faktorn graveras.",
+    cNorm: "Normera volym mot referens",
+    hNorm: "Höjderna skalas så att totalvolymen blir samma som referensens (samma år). Paret jämför FORM, inte mängd — absolut skala gäller inte längre. Faktorn graveras NORM ×k.",
+    lWeeks: "Veckoetiketter på höger apron",
+    hWeeks: "Kommaseparerade veckonummer som graveras per år (utöver årtalet).",
+    bExport: "Exportera STL (zip)", checking: "Kontrollerar…",
+    hExport: "Zip med modell-STL + text-STL (samma koordinatsystem, importera båda) + följesedel. Exporten vägrar om soliderna inte är vattentäta eller text hamnar under 2,2 mm versalhöjd.",
+    bAbout: "Om & metod", bClose: "Stäng",
+    buildRep: "Byggrapport (textblock, spärrar)",
+    hudMouse: "dra = rotera · hjul = zooma · hovra = värde",
+    hudTouch: "dra = rotera · nyp = zooma · tryck = värde",
+    measures: { consumption: "Elförbrukning", production: "Elproduktion", price: "Spotpris",
+      cost: "Spotkostnad (pris × förbrukning)", totalpris: "Totalpris hushåll (modell)" },
+    zones: { SE: "Sverige", FI: "Finland", DELU: "Tyskland (DE–LU)", FR: "Frankrike" },
+    cats: null, decl: null,   // null = ta texten ur datat (svenska)
+    days: ["mån", "tis", "ons", "tor", "fre", "lör", "sön"],
+    res: { day: "dygnsmedel", week: "veckomedel", month: "månadsmedel", year: "årsmedel",
+      ma: n => `glid ${n} h` },
+    ongoing: " (pågår)",
+    yearHintN: (n, d, big) => `${n} år rygg mot rygg — djup ~${d} mm` +
+      (big ? " (större än de flesta skrivarbäddar!)" : ""),
+    yearHint1: "Flera år staplas rygg mot rygg, nyaste året främst.",
+    tip: (day, w, y, ds, hh) => `<b>${day} v${w} ${y}</b> (${ds}) kl ${String(hh).padStart(2, "0")}`,
+    missing: "saknas", negTwinTip: "negativ, tvilling",
+    footprint: (w, d, h, t) => `Fotavtryck ${w} × ${d} mm, maxhöjd ${h} mm, ${t} trianglar`,
+    scale: "Skala", normAgainst: "mot", resolution: "Upplösning",
+    real: (ref) => `Fasta priser: KPI-justerat till ${ref} (SCB, 2020=100)`,
+    nominal: "Löpande (nominella) priser",
+    model: (src, cat) => `Modell: (spot + påslag + fasta komponenter) × momsfaktor — ${src}; typkund ${cat}`,
+    calSCB: "SCB-kalibrerad", calEurostat: "Eurostat-kalibrerad",
+    extrap: n => `${n} timmar använder senast kända SCB-komponenter (extrapolerat)`,
+    capped: n => `${n} timmar kapade i taket (platå)`,
+    neg: n => `${n} timmar negativa — nedåtstaplar digitalt; i utskrift klippta till 0 + egen tvilling-STL`,
+    missingH: n => `${n} saknade timmar (visas på nollplanet)`,
+    link: "Länk & QR (exakt denna vy)",
+    showingTwin: "Visar negativ-tvillingen", twinMirrored: " (speglad för limning mot undersidan)",
+    engraved: "Gravyr",
+    repHead: (f, p) => `Textblock (golv ${f} mm, föredraget ${p} mm):`,
+    repSkipped: "HOPPAD", repCap: "versal", repWidth: "bredd",
+    errTotalComp: z => `Totalpris saknar priskomponenter för ${z}.`,
+    errNoData: (m, z) => `${m} saknar data för ${z}.`,
+    errRefMissing: (m, z, ys) => `Referensserien ${m} ${z} saknar år ${ys}`,
+    errVolZero: "Egen volym är 0 — kan inte normera",
+    errNotTight: (name, e, v) => `${name} ej vattentät (${e} oparade kanter, volym ${v} mm³) — export vägrad`,
+    solids: { plate: "modellsoliden", text: "textsoliden", ub: "undersidesbottnen",
+      ut: "undersidestrycket", neg: "negativ-tvillingen" },
+    errLoad: "Kunde inte läsa data. Kör via en webbserver (t.ex. python -m http.server i site/) — file:// fungerar inte. ",
+    errCore: "",
+  },
+  en: {
+    title: "Electricity in Sweden over time — calendar relief",
+    h1: "Electricity in Sweden over time",
+    sub: "calendar relief · week × hour · web twin with STL export (WYSIWYG)",
+    lMeasure: "Measure", lZone: "Area",
+    hZone: "All of Sweden is the main view; SE1–SE4 (the bidding zones) use the same scale (the zones add up to the Sweden model). The countries (Finland, Germany, France) share the same scales — prices in öre/kWh (1/100 SEK) via the ECB monthly rate.",
+    lYears: "Years (ISO years)",
+    lRes: "Resolution / smoothing (D6)",
+    resHour: "Hour (raw data)", resMa: "Moving average — N hours", resDay: "Daily mean",
+    resWeek: "Weekly mean", resMonth: "Monthly mean", resYear: "Annual mean",
+    maHint: "hours, centred window",
+    hRes: "Averaging is engraved on the model (in Swedish, e.g. DYGNSMEDEL = daily mean, GLID 24 H = 24 h moving average) — aggregation smooths out the hourly peaks and is therefore a visible choice.",
+    lCat: "Customer type (SCB consumer category)",
+    hCat: "15,000+ kWh/yr ≈ house with electric heating; 2,500–4,999 ≈ apartment/house without electric heating. The components are national averages (SCB EN0301).",
+    cReal: "Real prices (CPI-adjusted)",
+    hReal: "All hourly values are converted to today's money value with the CPI per calendar month (Statistics Sweden, 2020=100). Unticked = current nominal prices. The mode is engraved on the model.",
+    cTwin: "Show the negative twin",
+    cMirror: "Mirror the twin (glued to the underside)",
+    hTwin: "On screen, negative hours are shown as downward bars below the plate. In print the main model is clipped at 0 and the twin carries the amounts as a separate STL. A mirrored twin is flipped around the long side and glued to the underside of the main model — every negative hour ends up exactly below its cell.",
+    cUnder: "Preview the underside (QR + text)",
+    hUnder: "The two-colour print on the underside is always included in the export; here it can be switched on in the 3D view (look from below).",
+    lCap: "Price cap (D3 — capping is a visible choice)",
+    hCap: "Extreme peaks become fragile 1 mm² pillars in print. The cap is engraved on the model and declared in the packing slip.",
+    capNone: "No cap (the full peaks are printed)", capSuffix: " — plateau + engraved TAK (cap)",
+    lZoom: "Height zoom (deviation from the family scale)",
+    zoom1: "×1 — family scale (comparable with everything)", zoom2: "×2 — engraved ZOOM ×2",
+    zoom5: "×5 — engraved ZOOM ×5", zoom10: "×10 — engraved ZOOM ×10",
+    hZoom: "For small bidding zones (e.g. SE1) the family scale can be low. A zoomed model is NOT comparable with unzoomed ones — the factor is engraved.",
+    cNorm: "Normalize volume to a reference",
+    hNorm: "Heights are scaled so that the total volume equals the reference's (same years). The pair compares SHAPE, not quantity — the absolute scale no longer applies. The factor is engraved NORM ×k.",
+    lWeeks: "Week labels on the right apron",
+    hWeeks: "Comma-separated week numbers engraved for each year (in addition to the year).",
+    bExport: "Export STL (zip)", checking: "Checking…",
+    hExport: "Zip with model STL + text STL (same coordinate system, import both) + packing slip (in Swedish). The export refuses if the solids are not watertight or text falls below 2.2 mm cap height.",
+    bAbout: "About & method", bClose: "Close",
+    buildRep: "Build report (text blocks, checks)",
+    hudMouse: "drag = rotate · wheel = zoom · hover = value",
+    hudTouch: "drag = rotate · pinch = zoom · tap = value",
+    measures: { consumption: "Electricity consumption", production: "Electricity production",
+      price: "Spot price", cost: "Spot cost (price × consumption)",
+      totalpris: "Total household price (model)" },
+    zones: { SE: "Sweden", FI: "Finland", DELU: "Germany (DE–LU)", FR: "France" },
+    cats: { DA: "less than 1,000 kWh/yr", DB: "1,000–2,499 kWh/yr", DC: "2,500–4,999 kWh/yr",
+      DD: "5,000–14,999 kWh/yr", DE: "15,000 kWh/yr or more (house with electric heating)" },
+    decl: {
+      SE_price: "Sweden's spot price = consumption-weighted mean of SE1–SE4 (hourly weights from the ENTSO-E load) from 2015; arithmetic mean 2008–2014. Before 2011-11-01 Sweden was a single bidding zone.",
+      time: "Swedish local time; the spring DST hour is missing, the autumn double hour is averaged (spot price: the first hour).",
+      weeks: "ISO weeks (Mon–Sun); a year = an ISO year.",
+      sources: "Spot price Sweden: Nord Pool via mgrey.se/espot (öre/kWh, daily rate). Countries (FI, DE–LU, FR): ENTSO-E day-ahead in EUR/MWh × ECB monthly average rate SEK/EUR. Consumption/production: ENTSO-E Transparency; production = sum of generation types (SE complete 2022+, FI/FR 2015+, DE–LU 2019+ — the DE-LU bidding zone did not exist before Oct 2018).",
+      outliers: "Consumption data are screened automatically: values above 2.5× the median for the same hour ±7 days are set as missing (known ENTSO-E errors where SE1/SE2 multiply for some hours; list in data_src/outlier_report.txt). Prices are not screened — price spikes are real.",
+      countries: "The countries' prices are in öre/kWh (Swedish currency) for commensurability; the CPI adjustment uses Swedish CPI for the countries too (Swedish money value, declared). Total household price: Sweden from SCB EN0301, the countries from Eurostat nrg_pc_204 (same consumption bands; DE–LU uses German consumer prices).",
+    },
+    days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    res: { day: "daily mean", week: "weekly mean", month: "monthly mean", year: "annual mean",
+      ma: n => `${n} h moving average` },
+    ongoing: " (ongoing)",
+    yearHintN: (n, d, big) => `${n} years back to back — depth ~${d} mm` +
+      (big ? " (larger than most printer beds!)" : ""),
+    yearHint1: "Several years are stacked back to back, newest year at the front.",
+    tip: (day, w, y, ds, hh) => `<b>${day} wk ${w} ${y}</b> (${ds}) ${String(hh).padStart(2, "0")}:00`,
+    missing: "missing", negTwinTip: "negative, twin",
+    footprint: (w, d, h, t) => `Footprint ${w} × ${d} mm, max height ${h} mm, ${t} triangles`,
+    scale: "Scale", normAgainst: "against", resolution: "Resolution",
+    real: (ref) => `Real prices: CPI-adjusted to ${ref} (SCB, 2020=100)`,
+    nominal: "Current (nominal) prices",
+    model: (src, cat) => `Model: (spot + margin + fixed components) × VAT factor — ${src}; customer type ${cat}`,
+    calSCB: "calibrated to SCB", calEurostat: "calibrated to Eurostat",
+    extrap: n => `${n} hours use the latest known SCB components (extrapolated)`,
+    capped: n => `${n} hours capped at the ceiling (plateau)`,
+    neg: n => `${n} negative hours — downward bars on screen; in print clipped to 0 + separate twin STL`,
+    missingH: n => `${n} missing hours (shown on the zero plane)`,
+    link: "Link & QR (exactly this view)",
+    showingTwin: "Showing the negative twin", twinMirrored: " (mirrored for gluing to the underside)",
+    engraved: "Engraving (Swedish)",
+    repHead: (f, p) => `Text blocks (floor ${f} mm, preferred ${p} mm):`,
+    repSkipped: "SKIPPED", repCap: "cap height", repWidth: "width",
+    errTotalComp: z => `Total price has no price components for ${z}.`,
+    errNoData: (m, z) => `${m} has no data for ${z}.`,
+    errRefMissing: (m, z, ys) => `The reference series ${m} ${z} lacks the years ${ys}`,
+    errVolZero: "Own volume is 0 — cannot normalize",
+    errNotTight: (name, e, v) => `${name} is not watertight (${e} unpaired edges, volume ${v} mm³) — export refused`,
+    solids: { plate: "the model solid", text: "the text solid", ub: "the underside base",
+      ut: "the underside print", neg: "the negative twin" },
+    errLoad: "Could not load data. Run via a web server (e.g. python -m http.server in site/) — file:// does not work. ",
+    errCore: "Build blocked (details in Swedish): ",
+  },
+  ja: {
+    title: "スウェーデンの電力の推移 — カレンダー・レリーフ",
+    h1: "スウェーデンの電力の推移",
+    sub: "カレンダー・レリーフ · 週 × 時間 · STL書き出し付きWebツイン（WYSIWYG）",
+    lMeasure: "指標", lZone: "エリア",
+    hZone: "スウェーデン全体が基本表示です。SE1〜SE4（入札エリア）も同じスケールで、各エリアを合計するとスウェーデン全体のモデルになります。他の国（フィンランド、ドイツ、フランス）も同じスケールを共有し、価格はECBの月平均レートでöre/kWh（1 öre＝0.01クローナ）に換算しています。",
+    lYears: "年（ISO年）",
+    lRes: "分解能・平滑化（D6）",
+    resHour: "1時間（生データ）", resMa: "移動平均 — N時間", resDay: "日平均",
+    resWeek: "週平均", resMonth: "月平均", resYear: "年平均",
+    maHint: "時間、中心化ウィンドウ",
+    hRes: "平均化はモデルに刻印されます（スウェーデン語。例：DYGNSMEDEL＝日平均、GLID 24 H＝24時間移動平均）。集計すると時間ごとのピークがならされるため、目に見える選択として扱います。",
+    lCat: "需要家タイプ（SCBの需要家区分）",
+    hCat: "年間15,000 kWh以上 ≈ 電気暖房の戸建て、2,500〜4,999 kWh ≈ 電気暖房のない集合住宅・戸建て。各構成要素は全国平均です（SCB EN0301）。",
+    cReal: "実質価格（CPI調整済み）",
+    hReal: "すべての時間値を、暦月ごとの消費者物価指数（スウェーデン統計局、2020年=100）で現在の貨幣価値に換算します。チェックを外すと名目価格になります。モードはモデルに刻印されます。",
+    cTwin: "負のツインを表示",
+    cMirror: "ツインを鏡像にする（底面に貼り合わせ）",
+    hTwin: "画面上では、負の時間帯はプレートの下に伸びる下向きの棒で表示されます。印刷では本体モデルを0で切り詰め、その値は別STLのツインが担います。鏡像のツインは長辺を軸に裏返して本体の底面に貼り合わせると、負の各時間がちょうど対応するセルの真下に来ます。",
+    cUnder: "底面をプレビュー（QR＋テキスト）",
+    hUnder: "底面の2色印刷は常に書き出しに含まれます。ここでは3D表示でオンにできます（下から見てください）。",
+    lCap: "価格上限（D3 — 切り詰めは目に見える選択）",
+    hCap: "極端なピークは印刷すると折れやすい1 mm²の柱になります。上限はモデルに刻印され、仕様書に記載されます。",
+    capNone: "上限なし（ピークをすべて印刷）", capSuffix: " — 平らに切り詰め＋TAK（上限）を刻印",
+    lZoom: "高さズーム（ファミリー・スケールからの逸脱）",
+    zoom1: "×1 — ファミリー・スケール（すべてと比較可能）", zoom2: "×2 — ZOOM ×2を刻印",
+    zoom5: "×5 — ZOOM ×5を刻印", zoom10: "×10 — ZOOM ×10を刻印",
+    hZoom: "小さな入札エリア（例：SE1）ではファミリー・スケールだと低くなりすぎることがあります。ズームしたモデルはズームしていないものと比較できません。倍率は刻印されます。",
+    cNorm: "参照に対して体積を正規化",
+    hNorm: "総体積が参照（同じ年）と等しくなるよう高さを拡大縮小します。比べるのは量ではなく形で、絶対スケールは成り立たなくなります。倍率はNORM ×kとして刻印されます。",
+    lWeeks: "右側の縁の週ラベル",
+    hWeeks: "年ごとに刻印する週番号をカンマ区切りで指定します（年は常に刻印）。",
+    bExport: "STLを書き出す（zip）", checking: "確認中…",
+    hExport: "モデルSTL＋文字STL（同じ座標系。両方を読み込んでください）＋仕様書（スウェーデン語）のzipです。ソリッドが水密でない場合や、文字が大文字高さ2.2 mmを下回る場合は書き出しません。",
+    bAbout: "概要と方法", bClose: "閉じる",
+    buildRep: "生成レポート（文字ブロック、チェック）",
+    hudMouse: "ドラッグ＝回転 · ホイール＝ズーム · ホバー＝値",
+    hudTouch: "ドラッグ＝回転 · ピンチ＝ズーム · タップ＝値",
+    measures: { consumption: "電力消費量", production: "発電量", price: "スポット価格",
+      cost: "スポットコスト（価格×消費量）", totalpris: "家庭向け総電力価格（モデル）" },
+    zones: { SE: "スウェーデン", FI: "フィンランド", DELU: "ドイツ（DE–LU）", FR: "フランス" },
+    cats: { DA: "年間1,000 kWh未満", DB: "年間1,000〜2,499 kWh", DC: "年間2,500〜4,999 kWh",
+      DD: "年間5,000〜14,999 kWh", DE: "年間15,000 kWh以上（電気暖房の戸建て）" },
+    decl: {
+      SE_price: "スウェーデンのスポット価格＝SE1〜SE4の消費量加重平均（時間ごとの重みはENTSO-Eの負荷データ）、2015年以降。2008〜2014年は単純平均。2011年11月1日以前、スウェーデンは単一の入札エリアでした。",
+      time: "スウェーデン現地時間。夏時間開始時の1時間は欠け、終了時の重複する1時間は平均しています（スポット価格は最初の1時間）。",
+      weeks: "ISO週（月〜日）。1年＝1 ISO年。",
+      sources: "スウェーデンのスポット価格：mgrey.se/espot経由のNord Pool（öre/kWh、日次レート）。他の国（FI、DE–LU、FR）：ENTSO-Eの前日市場価格（EUR/MWh）×ECBの月平均レート（SEK/EUR）。消費量・発電量：ENTSO-E Transparency。発電量＝電源種別の合計（SEは2022年以降完全、FI/FRは2015年以降、DE–LUは2019年以降。DE-LU入札エリアは2018年10月以前は存在しません）。",
+      outliers: "消費データは自動的にチェックします。同じ時刻の前後7日間の中央値の2.5倍を超える値は欠損扱いにします（SE1/SE2が一部の時間で数倍になるENTSO-Eの既知のエラー。一覧はdata_src/outlier_report.txt）。価格はチェックしません。価格の急騰は現実のものだからです。",
+      countries: "比較できるよう、他国の価格もöre/kWh（スウェーデン通貨）で表します。物価調整は他国にもスウェーデンのCPIを使います（スウェーデンの貨幣価値。明示済み）。家庭向け総電力価格：スウェーデンはSCB EN0301、他国はEurostat nrg_pc_204（同じ消費帯。DE–LUはドイツの消費者価格）。",
+    },
+    days: ["月", "火", "水", "木", "金", "土", "日"],
+    res: { day: "日平均", week: "週平均", month: "月平均", year: "年平均",
+      ma: n => `${n}時間移動平均` },
+    ongoing: "（進行中）",
+    yearHintN: (n, d, big) => `${n}年分を背中合わせ — 奥行 約${d} mm` +
+      (big ? "（ほとんどのプリンターのベッドより大きい！）" : ""),
+    yearHint1: "複数年を背中合わせに並べます。最新の年が手前です。",
+    tip: (day, w, y, ds, hh) => `<b>${y}年 第${w}週（${day}）</b> ${ds} ${hh}時`,
+    missing: "データなし", negTwinTip: "負、ツイン",
+    footprint: (w, d, h, t) => `設置面 ${w} × ${d} mm、最大高さ ${h} mm、三角形 ${t}個`,
+    scale: "スケール", normAgainst: "参照：", resolution: "分解能",
+    real: (ref) => `実質価格：${ref}の価値にCPI調整（SCB、2020年=100）`,
+    nominal: "名目価格",
+    model: (src, cat) => `モデル：（スポット＋マージン＋固定の構成要素）×付加価値税係数 — ${src}、需要家タイプ ${cat}`,
+    calSCB: "SCBに較正", calEurostat: "Eurostatに較正",
+    extrap: n => `${n}時間は最後に判明しているSCBの構成要素を使用（外挿）`,
+    capped: n => `${n}時間を上限で切り詰め（平ら）`,
+    neg: n => `負の時間 ${n}時間 — 画面では下向きの棒、印刷では0に切り詰め＋別のツインSTL`,
+    missingH: n => `欠損 ${n}時間（ゼロ面に表示）`,
+    link: "リンクとQR（この表示そのもの）",
+    showingTwin: "負のツインを表示中", twinMirrored: "（底面貼り合わせ用に鏡像）",
+    engraved: "刻印（スウェーデン語）",
+    repHead: (f, p) => `文字ブロック（下限 ${f} mm、推奨 ${p} mm）：`,
+    repSkipped: "省略", repCap: "大文字高さ", repWidth: "幅",
+    errTotalComp: z => `${z}の総電力価格には価格構成要素がありません。`,
+    errNoData: (m, z) => `${z}の「${m}」のデータはありません。`,
+    errRefMissing: (m, z, ys) => `参照系列「${m}」${z}には次の年がありません：${ys}`,
+    errVolZero: "自身の体積が0のため正規化できません",
+    errNotTight: (name, e, v) => `${name}が水密ではありません（対のない辺 ${e}本、体積 ${v} mm³）— 書き出しを中止しました`,
+    solids: { plate: "モデルのソリッド", text: "文字のソリッド", ub: "底面のベース",
+      ut: "底面の印刷", neg: "負のツイン" },
+    errLoad: "データを読み込めませんでした。Webサーバー経由で開いてください（例：site/でpython -m http.server）。file://では動作しません。",
+    errCore: "生成を停止しました（詳細はスウェーデン語）：",
+  },
+};
+const LOCALE = { sv: "sv-SE", en: "en-GB", ja: "ja-JP" };
+let LANG = (() => {
+  try {
+    const q = new URLSearchParams(location.search).get("lang");
+    if (q && I18N[q]) return q;
+  } catch (e) {}
+  try {
+    const s = localStorage.getItem("el3d_sprak");
+    if (s && I18N[s]) return s;
+  } catch (e) {}
+  const n = (navigator.language || "").toLowerCase();
+  if (n.startsWith("ja")) return "ja";
+  if (/^(sv|nb|nn|no|da)/.test(n)) return "sv";
+  return "en";
+})();
+const T = (k) => (I18N[LANG][k] !== undefined ? I18N[LANG][k] : I18N.sv[k]);
+const fmtL = (x, dec = 1) => x.toLocaleString(LOCALE[LANG],
+  { minimumFractionDigits: dec, maximumFractionDigits: dec });
+const intL = (n) => n.toLocaleString(LOCALE[LANG]);
+const zoneUI = (z) => (T("zones")[z]) || zoneLabel(z);
+const measureUI = (m) => (T("measures")[m]) || measureInfo(m).label;
+const catUI = (k) => (T("cats") && T("cats")[k]) || state.scb.categories[k];
+// kärnans BYGGSPÄRR-fel är svenska; på en/ja får de en översatt inledning
+const errText = (err) => {
+  const msg = String(err.message || err);
+  return /^BYGGSPÄRR/.test(msg) && T("errCore") ? T("errCore") + msg : msg;
+};
+
+function applyStaticText() {
+  document.documentElement.lang = LANG;
+  document.title = T("title");
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = T(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll(".about-lang")) {
+    el.classList.toggle("aktiv", el.dataset.lang === LANG);
+  }
+  for (const fl of document.querySelectorAll("#flaggor .flagga")) {
+    fl.classList.toggle("aktiv", fl.dataset.sprak === LANG);
+    fl.setAttribute("aria-pressed", fl.dataset.sprak === LANG ? "true" : "false");
+  }
+}
+
 async function fetchJSON(url) {
   const r = await fetch(url, { cache: "no-cache" });
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
@@ -1507,7 +1802,7 @@ async function seriesFor(measure, zone, years) {
       const cat = state.priceCategory;
       const start = isoWeek1Monday(y);
       const halvar = isCountry(zone) ? state.scb.halvarC[zone] : state.scb.halvar;
-      if (!halvar) throw new Error(`Totalpris saknar komponenter för ${zoneLabel(zone)}`);
+      if (!halvar) throw new Error(T("errTotalComp")(zoneUI(zone)));
       const keys = Object.keys(halvar).sort();
       const n = p.weeks * 168;
       const values = new Array(n).fill(null);
@@ -1587,11 +1882,11 @@ async function rebuild() {
   const info = measureInfo(state.measure);
   if (state.measure === "totalpris" && isCountry(state.zone) &&
       !(state.scb.halvarC && state.scb.halvarC[state.zone])) {
-    throw new Error(`Totalpris saknar priskomponenter för ${zoneLabel(state.zone)}.`);
+    throw new Error(T("errTotalComp")(zoneUI(state.zone)));
   }
   const yAvail = yearsFor(state.measure, state.zone);
   if (!yAvail.length) {
-    throw new Error(`${info.label} saknar data för ${zoneLabel(state.zone)}.`);
+    throw new Error(T("errNoData")(measureUI(state.measure), zoneUI(state.zone)));
   }
   const years = selectedYears();
   const { yearsData: raw, notes } = await seriesFor(state.measure, state.zone, years);
@@ -1609,8 +1904,8 @@ async function rebuild() {
     const refYears = yearsFor(state.normMeasure, state.normZone);
     const missingYears = years.filter(y => !refYears.includes(y));
     if (missingYears.length) {
-      throw new Error(`Referensserien ${refInfo.label} ${zoneLabel(state.normZone)} ` +
-        `saknar år ${missingYears.join(", ")}`);
+      throw new Error(T("errRefMissing")(measureUI(state.normMeasure),
+        zoneUI(state.normZone), missingYears.join(", ")));
     }
     const refRes = await seriesFor(state.normMeasure, state.normZone, years);
     const refData = transformSeries(refRes.yearsData, state.resolution, state.maWindow);
@@ -1618,7 +1913,7 @@ async function rebuild() {
       isMoney(state.normMeasure) ? state.cap : null,
       isMoney(state.normMeasure) ? 0 : null);
     const vOwn = seriesVolume(yearsData, info.scalePerUnit, cap, floor);
-    if (vOwn <= 0) throw new Error("Egen volym är 0 — kan inte normera");
+    if (vOwn <= 0) throw new Error(T("errVolZero"));
     normFactor = vRef / vOwn;
     normNote = `${refInfo.label} ${zoneLabel(state.normZone)}`;
   }
@@ -1917,7 +2212,6 @@ function tooltipMove(e) {
   tt.innerHTML = info;
 }
 
-const DAY_NAMES = ["mån", "tis", "ons", "tor", "fre", "lör", "sön"];
 function cellAt(x, y) {
   const plate = state.showNegTwin && state.twinPlate ? state.twinPlate : state.plate;
   if (x < 0 || x >= DATA_W || y < FRONT_APRON) return null;
@@ -1937,55 +2231,67 @@ function cellAt(x, y) {
   const ds = dt.toISOString().slice(0, 10);
   const unit = measureInfo(state.measure).unit;
   const resNote = state.resolution === "hour" ? ""
-    : ` <i>(${(resolutionSuffix() || "").toLowerCase()})</i>`;
-  const val = v === null || v === undefined ? "saknas"
-    : `${fmtSw(v, isMoney(state.measure) ? 1 : 0)} ${unit}${resNote}` +
-      (state.showNegTwin ? " <i>(negativ, tvilling)</i>" : "");
-  return `<b>${DAY_NAMES[d]} v${w} ${yd.isoYear}</b> (${ds}) kl ${String(hh).padStart(2,"0")}<br>${val}`;
+    : ` <i>(${resolutionUI()})</i>`;
+  const val = v === null || v === undefined ? T("missing")
+    : `${fmtL(v, isMoney(state.measure) ? 1 : 0)} ${unit}${resNote}` +
+      (state.showNegTwin ? ` <i>(${T("negTwinTip")})</i>` : "");
+  return `${T("tip")(T("days")[d], w, yd.isoYear, ds, hh)}<br>${val}`;
 }
 
 // ------------------------------------------------------------------ readout
+// upplösning i klartext på UI-språket (gravyren använder resolutionSuffix)
+function resolutionUI() {
+  const r = T("res");
+  return state.resolution === "ma" ? r.ma(state.maWindow) : (r[state.resolution] || "");
+}
+// titelrad på UI-språket (svenska: samma som gravyren)
+function titleUI(cfg) {
+  if (LANG === "sv") return cfg.title;
+  const years = selectedYears();
+  const parts = [`${zoneUI(state.zone)} · ${measureUI(state.measure)}` +
+    (state.measure === "totalpris" ? ` (${catUI(state.priceCategory)})` : "")];
+  parts.push(years.length > 1 ? `${years[0]}–${years[years.length-1]}` : String(years[0]));
+  if (state.resolution !== "hour") parts.push(resolutionUI());
+  return parts.join(" · ");
+}
 function updateReadout(plate, text, cfg) {
   const info = measureInfo(state.measure);
   const s = plate.stats;
   const lines = [];
-  lines.push(`<b>${cfg.title}</b>`);
-  lines.push(`Fotavtryck ${fmtSw(plate.widthMM, 0)} × ${fmtSw(plate.depthMM, 0)} mm, ` +
-    `maxhöjd ${fmtSw(BASE + plate.plinth + s.maxMM, 1)} mm, ` +
-    `${(plate.tris.length / 9 + text.tris.length / 9).toLocaleString("sv-SE")} trianglar`);
-  lines.push(`Skala: ${info.scaleLabel}` +
+  lines.push(`<b>${titleUI(cfg)}</b>`);
+  if (LANG !== "sv") lines.push(`${T("engraved")}: ${cfg.title}`);
+  lines.push(T("footprint")(fmtL(plate.widthMM, 0), fmtL(plate.depthMM, 0),
+    fmtL(BASE + plate.plinth + s.maxMM, 1),
+    intL(plate.tris.length / 9 + text.tris.length / 9)));
+  lines.push(`${T("scale")}: ${info.scaleLabel}` +
     (state.zoom !== 1 ? ` × zoom ${state.zoom}` : "") +
-    (state.norm ? ` × norm ${fmtSw(state.lastNormFactor, 3)} (mot ${state.normNote})` : ""));
-  if (state.resolution !== "hour") lines.push(`Upplösning: ${resolutionSuffix()}`);
+    (state.norm ? ` × norm ${fmtL(state.lastNormFactor, 3)} (${T("normAgainst")} ` +
+      `${measureUI(state.normMeasure)} ${zoneUI(state.normZone)})` : ""));
+  if (state.resolution !== "hour") lines.push(`${T("resolution")}: ${resolutionUI()}`);
   if (isMoney(state.measure)) {
-    lines.push(state.realPrices
-      ? `Fasta priser: KPI-justerat till ${state.scb.kpi.ref} (SCB, 2020=100)`
-      : `Löpande (nominella) priser`);
+    lines.push(state.realPrices ? T("real")(state.scb.kpi.ref) : T("nominal"));
   }
   if (state.measure === "totalpris") {
-    const src = isCountry(state.zone) ? "Eurostat-kalibrerad" : "SCB-kalibrerad";
-    lines.push(`Modell: (spot + påslag + fasta komponenter) × momsfaktor — ${src}; ` +
-      `typkund ${state.scb.categories[state.priceCategory]}`);
+    const src = isCountry(state.zone) ? T("calEurostat") : T("calSCB");
+    lines.push(T("model")(src, catUI(state.priceCategory)));
     if (state.notes && state.notes.extrapolatedHours) {
-      lines.push(`${state.notes.extrapolatedHours.toLocaleString("sv-SE")} timmar använder ` +
-        `senast kända SCB-komponenter (extrapolerat)`);
+      lines.push(T("extrap")(intL(state.notes.extrapolatedHours)));
     }
   }
-  if (s.capped) lines.push(`${s.capped} timmar kapade i taket (platå)`);
-  if (state.negCount) lines.push(`${state.negCount} timmar negativa — nedåtstaplar ` +
-    `digitalt; i utskrift klippta till 0 + egen tvilling-STL`);
-  if (s.missing) lines.push(`${s.missing} saknade timmar (visas på nollplanet)`);
-  lines.push(`Länk & QR (exakt denna vy): hedin.it/r/EL3D/${encodeConfig(state)} ` +
+  if (s.capped) lines.push(T("capped")(intL(s.capped)));
+  if (state.negCount) lines.push(T("neg")(intL(state.negCount)));
+  if (s.missing) lines.push(T("missingH")(intL(s.missing)));
+  lines.push(`${T("link")}: hedin.it/r/EL3D/${encodeConfig(state)} ` +
     `(QR v${state.qrRuntime.version}, ${state.qrRuntime.size}×${state.qrRuntime.size})`);
-  if (state.showNegTwin) lines.push(`<b>Visar negativ-tvillingen</b>` +
-    (state.twinMirror ? ` (speglad för limning mot undersidan)` : ``));
+  if (state.showNegTwin) lines.push(`<b>${T("showingTwin")}</b>` +
+    (state.twinMirror ? T("twinMirrored") : ``));
   $("readout").innerHTML = lines.map(l => `<div>${l}</div>`).join("");
 
   const rep = text.report.map(b => b.skipped
-    ? `  ${b.name}: HOPPAD (${b.skipped})`
-    : `  ${b.name}: versal ${fmtSw(b.capMM, 2)} mm, bredd ${fmtSw(b.widthMM, 1)} mm`);
+    ? `  ${b.name}: ${T("repSkipped")} (${b.skipped})`
+    : `  ${b.name}: ${T("repCap")} ${fmtL(b.capMM, 2)} mm, ${T("repWidth")} ${fmtL(b.widthMM, 1)} mm`);
   $("buildreport").textContent =
-    `Textblock (golv ${CAP_FLOOR} mm, föredraget ${CAP_PREF} mm):\n` + rep.join("\n");
+    T("repHead")(fmtL(CAP_FLOOR, 1), fmtL(CAP_PREF, 1)) + "\n" + rep.join("\n");
 }
 
 // (crc32/makeZip ligger i STL-CORE så Node-testet kan verifiera zip-artefakten)
@@ -2126,20 +2432,19 @@ function foljesedel(plate, text, cfg) {
 
 async function doExport() {
   const btn = $("export-btn");
-  btn.disabled = true; btn.textContent = "Kontrollerar…";
+  btn.disabled = true; btn.textContent = T("checking");
   try {
     await rebuild(); // exportera exakt det som visas
     const plate = state.plate, text = state.textSolid, under = state.under;
     const solids = [
-      ["modellsoliden", plate.tris], ["textsoliden", text.tris],
-      ["undersidesbottnen", under.bgTris], ["undersidestrycket", under.inkTris],
+      [T("solids").plate, plate.tris], [T("solids").text, text.tris],
+      [T("solids").ub, under.bgTris], [T("solids").ut, under.inkTris],
     ];
-    if (state.twinPlate) solids.push(["negativ-tvillingen", state.twinPlate.tris]);
+    if (state.twinPlate) solids.push([T("solids").neg, state.twinPlate.tris]);
     for (const [name, tris] of solids) {
       const c = checkSolid(tris);
       if (!c.watertight || c.volumeMM3 <= 0) {
-        throw new Error(`${name} ej vattentät (${c.badEdges} oparade kanter, ` +
-          `volym ${fmtSw(c.volumeMM3, 0)} mm³) — export vägrad`);
+        throw new Error(T("errNotTight")(name, c.badEdges, fmtL(c.volumeMM3, 0)));
       }
     }
     const years = selectedYears();
@@ -2169,15 +2474,15 @@ async function doExport() {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     $("error").textContent = "";
   } catch (err) {
-    $("error").textContent = String(err.message || err);
+    $("error").textContent = errText(err);
   } finally {
-    btn.disabled = false; btn.textContent = "Exportera STL (zip)";
+    btn.disabled = false; btn.textContent = T("bExport");
   }
 }
 
 // ----------------------------------------------------------------------- UI
 function yearOpt(y) {
-  const p = y === state.index.partialYear ? " (pågår)" : "";
+  const p = y === state.index.partialYear ? T("ongoing") : "";
   return `<option value="${y}">${y}${p}</option>`;
 }
 function fillYearSelects() {
@@ -2199,16 +2504,15 @@ function refreshToSelect() {
   to.value = state.yearTo;
   const n = state.yearTo - state.yearFrom + 1;
   $("year-hint").textContent = n > 1
-    ? `${n} år rygg mot rygg — djup ~${FRONT_APRON + n * 52} mm` +
-      (FRONT_APRON + n * 53 > 250 ? " (större än de flesta skrivarbäddar!)" : "")
-    : "Flera år staplas rygg mot rygg, nyaste året främst.";
+    ? T("yearHintN")(n, FRONT_APRON + n * 52, FRONT_APRON + n * 53 > 250)
+    : T("yearHint1");
 }
 
 const CAP_OPTIONS = {
-  ore: [["none", "Inget tak (hela toppen skrivs ut)"], [200, "200 öre/kWh"],
+  ore: [["none", null], [200, "200 öre/kWh"],
         [300, "300 öre/kWh"], [400, "400 öre/kWh"], [500, "500 öre/kWh"],
         [700, "700 öre/kWh"]],
-  msek: [["none", "Inget tak (hela toppen skrivs ut)"], [25, "25 MSEK/h"],
+  msek: [["none", null], [25, "25 MSEK/h"],
          [50, "50 MSEK/h"], [100, "100 MSEK/h"], [150, "150 MSEK/h"]],
 };
 function refreshVisibility() {
@@ -2219,8 +2523,8 @@ function refreshVisibility() {
   const opts = state.measure === "cost" ? CAP_OPTIONS.msek : CAP_OPTIONS.ore;
   const capSel = $("cap");
   capSel.innerHTML = opts.map(([v, t]) =>
-    `<option value="${v}"${v === "none" ? " selected" : ""}>${t}` +
-    `${v !== "none" ? " — platå + gravyr TAK" : ""}</option>`).join("");
+    `<option value="${v}"${v === "none" ? " selected" : ""}>${t || T("capNone")}` +
+    `${v !== "none" ? T("capSuffix") : ""}</option>`).join("");
   if (state.cap !== null && !opts.some(([v]) => v === state.cap)) state.cap = null;
   capSel.value = state.cap === null ? "none" : String(state.cap);
   $("norm-detail").style.display = state.norm ? "" : "none";
@@ -2231,7 +2535,7 @@ async function onChange() {
   try {
     await rebuild();
   } catch (err) {
-    $("error").textContent = String(err.message || err);
+    $("error").textContent = errText(err);
   }
 }
 
@@ -2306,13 +2610,16 @@ function bindUI() {
 }
 
 async function main() {
+  applyStaticText();
+  for (const fl of document.querySelectorAll("#flaggor .flagga")) {
+    fl.addEventListener("click", () => setLang(fl.dataset.sprak));
+  }
   try {
     state.glyphs = await fetchJSON("glyphs.json");
     state.index = await fetchJSON("data/index.json");
     state.scb = await fetchJSON("data/scb.json");
   } catch (err) {
-    $("error").textContent = "Kunde inte läsa data. Kör via en webbserver " +
-      "(t.ex. python -m http.server i site/) — file:// fungerar inte. " + err;
+    $("error").textContent = T("errLoad") + err;
     return;
   }
   // beräknade mått (revision 6): spotkostnad och totalpris hushåll
@@ -2334,30 +2641,56 @@ async function main() {
     ms.consumption.engr = "ELFÖRBRUKNING";
     ms.production.engr = "ELPRODUKTION";
   }
-  const mSel = $("measure");
-  mSel.innerHTML = Object.entries(state.index.measures)
-    .map(([k, m]) => `<option value="${k}">${m.label}</option>`).join("");
-  mSel.value = state.measure;
-  $("pricecat").innerHTML = Object.entries(state.scb.categories)
-    .map(([k, t]) => `<option value="${k}">${t}</option>`).join("");
-  $("pricecat").value = state.priceCategory;
-  const zoneOpts = state.index.zones
-    .map(z => `<option value="${z}">${zoneLabel(z)}</option>`).join("");
-  $("zone").innerHTML = zoneOpts;
-  $("norm-zone").innerHTML = zoneOpts;
-  $("norm-measure").innerHTML = mSel.innerHTML;
-  $("norm-zone").value = state.normZone;
+  fillLangSelects();
   // återställ vy från #hash (delad länk eller skannad QR via r/EL3D/<kod>)
   const restored = decodeConfig(decodeURIComponent(location.hash.slice(1)));
   if (restored) Object.assign(state, restored);
   fillYearSelects();
   refreshVisibility();
   syncUI();
-  $("declarations").innerHTML = Object.values(state.index.declarations)
-    .map(d => `<li>${d}</li>`).join("");
+  fillDeclarations();
   bindUI();
   initThree();
   await onChange();
+}
+
+// språkberoende menyer (mått, områden, typkund) — återfylls vid språkbyte
+function fillLangSelects() {
+  const mSel = $("measure");
+  mSel.innerHTML = Object.keys(state.index.measures)
+    .map(k => `<option value="${k}">${measureUI(k)}</option>`).join("");
+  mSel.value = state.measure;
+  $("pricecat").innerHTML = Object.keys(state.scb.categories)
+    .map(k => `<option value="${k}">${catUI(k)}</option>`).join("");
+  $("pricecat").value = state.priceCategory;
+  const zoneOpts = state.index.zones
+    .map(z => `<option value="${z}">${zoneUI(z)}</option>`).join("");
+  $("zone").innerHTML = zoneOpts;
+  $("zone").value = state.zone;
+  $("norm-zone").innerHTML = zoneOpts;
+  $("norm-measure").innerHTML = mSel.innerHTML;
+  $("norm-zone").value = state.normZone;
+  $("norm-measure").value = state.normMeasure;
+}
+function fillDeclarations() {
+  const tr = T("decl");
+  const html = Object.entries(state.index.declarations)
+    .map(([k, d]) => `<li>${(tr && tr[k]) || d}</li>`).join("");
+  for (const ul of document.querySelectorAll(".declarations")) ul.innerHTML = html;
+}
+function setLang(l) {
+  if (!I18N[l] || l === LANG) return;
+  LANG = l;
+  try { localStorage.setItem("el3d_sprak", l); } catch (e) {}
+  applyStaticText();
+  if (!state.index) return;
+  fillLangSelects();
+  fillYearSelects();
+  refreshVisibility();
+  syncUI();
+  fillDeclarations();
+  $("error").textContent = "";
+  if (state.plate) updateReadout(state.plate, state.textSolid, state.cfg);
 }
 
 // speglar state → kontrollerna (efter hash-återställning)
