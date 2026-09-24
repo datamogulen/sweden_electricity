@@ -9,6 +9,7 @@ WEBROT="site"     # lokal webbrot relativt repot
 FILES=(
   "index.html"
   "app.js"
+  "preview.png"
 )
 SFTP='set sftp:connect-program "ssh -a -x -i /Users/bjornh/.ssh/hedin_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes"; open -u bjornh, sftp://hedin.it:22'
 CMDS="$SFTP"
